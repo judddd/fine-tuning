@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Model Comparison Tool - 模型对比工具</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+                'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 32px;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 16px;
+        }
+
+        .config-section {
+            padding: 30px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .models-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+        }
+
+        .model-config {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .model-config h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #dc3545;
+            display: inline-block;
+        }
+
+        .status-indicator.loaded {
+            background: #28a745;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #495057;
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .model-info {
+            margin-top: 15px;
+            padding: 12px;
+            background: #e7f3ff;
+            border-radius: 8px;
+            font-size: 13px;
+            color: #004085;
+            display: none;
+        }
+
+        .model-info.show {
+            display: block;
+        }
+
+        .prompt-section {
+            padding: 30px;
+            background: white;
+        }
+
+        .prompt-section h3 {
+            margin-bottom: 20px;
+            color: #343a40;
+            font-size: 22px;
+        }
+
+        .prompt-input {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 15px;
+            min-height: 120px;
+            resize: vertical;
+            font-family: inherit;
+            transition: border-color 0.3s;
+        }
+
+        .prompt-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .generate-section {
+            margin-top: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .params {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+
+        .param-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .param-group label {
+            font-size: 13px;
+            color: #6c757d;
+        }
+
+        .param-group input[type="number"] {
+            width: 100px;
+            padding: 8px;
+            border: 2px solid #e9ecef;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .btn-generate {
+            padding: 15px 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+
+        .btn-generate:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-generate:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .comparison-section {
+            padding: 30px;
+            background: #f8f9fa;
+        }
+
+        .comparison-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+        }
+
+        .output-panel {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .output-header {
+            padding: 15px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .output-header.model-b {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+
+        .output-content {
+            padding: 20px;
+            min-height: 300px;
+            max-height: 600px;
+            overflow-y: auto;
+            font-size: 15px;
+            line-height: 1.8;
+            color: #333;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .output-content::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .output-content::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        .output-content::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+
+        .output-content::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        .loading {
+            color: #6c757d;
+            font-style: italic;
+        }
+
+        .error {
+            color: #dc3545;
+            padding: 15px;
+            background: #f8d7da;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+
+        .empty-state {
+            text-align: center;
+            color: #6c757d;
+            padding: 40px;
+            font-style: italic;
+        }
+
+        .timer {
+            font-size: 12px;
+            opacity: 0.8;
+        }
+
+        @media (max-width: 1200px) {
+            .models-grid,
+            .comparison-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔬 模型对比工具</h1>
+            <p>微调模型效果对比平台</p>
+        </div>
+
+        <div class="config-section">
+            <div class="models-grid">
+                <!-- Model A Configuration -->
+                <div class="model-config">
+                    <h3>
+                        <span class="status-indicator" id="status-a"></span>
+                        模型 A（原始模型）
+                    </h3>
+                    <div class="form-group">
+                        <label>模型名称（可选，留空自动检测）</label>
+                        <input type="text" id="name-a" placeholder="留空自动检测，如：Qwen/Qwen3-Next-80B-A3B-Instruct">
+                    </div>
+                    <div class="form-group">
+                        <label>模型路径</label>
+                        <input type="text" id="path-a" placeholder="/Users/newmind/.cache/modelscope/hub/models/Qwen/Qwen3-Next-80B-A3B-Instruct">
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-primary" onclick="loadModel('model_a')">
+                            加载模型
+                        </button>
+                        <button class="btn btn-secondary" onclick="unloadModel('model_a')">
+                            卸载
+                        </button>
+                    </div>
+                    <div class="model-info" id="info-a"></div>
+                </div>
+
+                <!-- Model B Configuration -->
+                <div class="model-config">
+                    <h3>
+                        <span class="status-indicator" id="status-b"></span>
+                        模型 B（微调模型）
+                    </h3>
+                    <div class="form-group">
+                        <label>模型名称（可选，留空自动检测）</label>
+                        <input type="text" id="name-b" placeholder="留空自动检测，如：Qwen/Qwen3-Next-80B-A3B-Finetuned">
+                    </div>
+                    <div class="form-group">
+                        <label>模型路径</label>
+                        <input type="text" id="path-b" placeholder="/path/to/finetuned/model">
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-primary" onclick="loadModel('model_b')">
+                            加载模型
+                        </button>
+                        <button class="btn btn-secondary" onclick="unloadModel('model_b')">
+                            卸载
+                        </button>
+                    </div>
+                    <div class="model-info" id="info-b"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="prompt-section">
+            <h3>💬 输入提示词</h3>
+            <textarea class="prompt-input" id="prompt" placeholder="在此输入你的问题或提示词..."></textarea>
+            
+            <div class="generate-section">
+                <div class="params">
+                    <div class="param-group">
+                        <label>最大长度</label>
+                        <input type="number" id="max-tokens" value="512" min="1" max="2048">
+                    </div>
+                    <div class="param-group">
+                        <label>温度</label>
+                        <input type="number" id="temperature" value="0.7" min="0" max="2" step="0.1">
+                    </div>
+                    <div class="param-group">
+                        <label>Top P</label>
+                        <input type="number" id="top-p" value="0.9" min="0" max="1" step="0.1">
+                    </div>
+                </div>
+                <button class="btn-generate" id="generate-btn" onclick="generateComparison()">
+                    🚀 开始对比生成
+                </button>
+            </div>
+        </div>
+
+        <div class="comparison-section">
+            <div class="comparison-grid">
+                <!-- Model A Output -->
+                <div class="output-panel">
+                    <div class="output-header">
+                        <span>模型 A 输出</span>
+                        <span class="timer" id="timer-a"></span>
+                    </div>
+                    <div class="output-content" id="output-a">
+                        <div class="empty-state">加载模型 A 并生成以查看输出</div>
+                    </div>
+                </div>
+
+                <!-- Model B Output -->
+                <div class="output-panel">
+                    <div class="output-header model-b">
+                        <span>模型 B 输出</span>
+                        <span class="timer" id="timer-b"></span>
+                    </div>
+                    <div class="output-content" id="output-b">
+                        <div class="empty-state">加载模型 B 并生成以查看输出</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let modelStatus = {
+            model_a: false,
+            model_b: false
+        };
+
+        // 页面加载时检查模型状态
+        async function checkStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                
+                modelStatus.model_a = data.model_a.loaded;
+                modelStatus.model_b = data.model_b.loaded;
+                
+                updateStatusIndicator('model_a', data.model_a.loaded, data.model_a.info);
+                updateStatusIndicator('model_b', data.model_b.loaded, data.model_b.info);
+            } catch (error) {
+                console.error('Failed to check status:', error);
+            }
+        }
+
+        function updateStatusIndicator(modelId, loaded, info) {
+            const indicator = document.getElementById(`status-${modelId.split('_')[1]}`);
+            const infoDiv = document.getElementById(`info-${modelId.split('_')[1]}`);
+            
+            if (loaded) {
+                indicator.classList.add('loaded');
+                if (info) {
+                    infoDiv.innerHTML = `
+                        <strong>${info.name}</strong><br>
+                        设备: ${info.device}<br>
+                        参数量: ${info.num_parameters}<br>
+                        精度: ${info.dtype}
+                    `;
+                    infoDiv.classList.add('show');
+                }
+            } else {
+                indicator.classList.remove('loaded');
+                infoDiv.classList.remove('show');
+            }
+        }
+
+        async function loadModel(modelId) {
+            const suffix = modelId.split('_')[1];
+            const name = document.getElementById(`name-${suffix}`).value.trim();
+            const path = document.getElementById(`path-${suffix}`).value.trim();
+            
+            if (!path) {
+                alert('请输入模型路径');
+                return;
+            }
+            
+            const btn = event.target;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner"></span> 加载中...';
+            
+            try {
+                const response = await fetch(`/api/models/${modelId}/load`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model_path: path,
+                        model_name: name || null
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert(`✅ ${data.message}`);
+                    await checkStatus();
+                } else {
+                    alert(`❌ ${data.message}\n${data.error || ''}`);
+                }
+            } catch (error) {
+                alert(`❌ 错误: ${error.message}`);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '加载模型';
+            }
+        }
+
+        async function unloadModel(modelId) {
+            try {
+                const response = await fetch(`/api/models/${modelId}/unload`, {
+                    method: 'POST'
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert(`✅ ${data.message}`);
+                    await checkStatus();
+                } else {
+                    alert(`❌ ${data.message}`);
+                }
+            } catch (error) {
+                alert(`❌ 错误: ${error.message}`);
+            }
+        }
+
+        async function generateComparison() {
+            const prompt = document.getElementById('prompt').value.trim();
+            
+            if (!prompt) {
+                alert('请输入提示词');
+                return;
+            }
+            
+            if (!modelStatus.model_a && !modelStatus.model_b) {
+                alert('请至少加载一个模型');
+                return;
+            }
+            
+            const maxTokens = parseInt(document.getElementById('max-tokens').value);
+            const temperature = parseFloat(document.getElementById('temperature').value);
+            const topP = parseFloat(document.getElementById('top-p').value);
+            
+            const generateBtn = document.getElementById('generate-btn');
+            generateBtn.disabled = true;
+            generateBtn.innerHTML = '<span class="spinner"></span> 生成中...';
+            
+            // Clear previous outputs
+            if (modelStatus.model_a) {
+                document.getElementById('output-a').innerHTML = '<div class="loading">生成中...</div>';
+                document.getElementById('timer-a').textContent = '';
+            }
+            if (modelStatus.model_b) {
+                document.getElementById('output-b').innerHTML = '<div class="loading">生成中...</div>';
+                document.getElementById('timer-b').textContent = '';
+            }
+            
+            // Generate from both models simultaneously
+            const promises = [];
+            
+            if (modelStatus.model_a) {
+                promises.push(streamGenerate('model_a', prompt, maxTokens, temperature, topP));
+            }
+            
+            if (modelStatus.model_b) {
+                promises.push(streamGenerate('model_b', prompt, maxTokens, temperature, topP));
+            }
+            
+            try {
+                await Promise.all(promises);
+            } catch (error) {
+                console.error('Generation error:', error);
+            } finally {
+                generateBtn.disabled = false;
+                generateBtn.innerHTML = '🚀 开始对比生成';
+            }
+        }
+
+        async function streamGenerate(modelId, prompt, maxTokens, temperature, topP) {
+            const suffix = modelId.split('_')[1];
+            const outputDiv = document.getElementById(`output-${suffix}`);
+            const timerSpan = document.getElementById(`timer-${suffix}`);
+            
+            outputDiv.innerHTML = '';
+            
+            const startTime = Date.now();
+            let timerInterval = setInterval(() => {
+                const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+                timerSpan.textContent = `${elapsed}s`;
+            }, 100);
+            
+            try {
+                const response = await fetch('/api/generate/stream', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        prompt: prompt,
+                        model_id: modelId,
+                        max_new_tokens: maxTokens,
+                        temperature: temperature,
+                        top_p: topP
+                    })
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+                
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    
+                    if (done) break;
+                    
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+                    
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const data = line.slice(6);
+                            
+                            if (data === '[DONE]') {
+                                clearInterval(timerInterval);
+                                const finalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+                                timerSpan.textContent = `✓ ${finalTime}s`;
+                                break;
+                            } else if (data.startsWith('[ERROR]')) {
+                                outputDiv.innerHTML += `<div class="error">错误: ${data}</div>`;
+                                clearInterval(timerInterval);
+                                break;
+                            } else {
+                                outputDiv.textContent += data;
+                                outputDiv.scrollTop = outputDiv.scrollHeight;
+                            }
+                        }
+                    }
+                }
+            } catch (error) {
+                outputDiv.innerHTML = `<div class="error">错误: ${error.message}</div>`;
+                clearInterval(timerInterval);
+            }
+        }
+
+        // 初始化
+        checkStatus();
+        
+        // 定期检查状态
+        setInterval(checkStatus, 10000);
+    </script>
+</body>
+</html>
+
