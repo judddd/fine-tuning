@@ -8,7 +8,7 @@ MLX 训练脚本 - 简化版
 2. 选择模型：在 config 中修改 "model" 参数
    - 使用 HuggingFace 模型 ID（推荐，自动下载）
    - 或使用本地模型路径
-3. 运行：python mlx.py
+3. 运行：python train.py
 
 支持的模型格式：
 - HuggingFace 模型 ID: "mlx-community/Qwen2.5-3B-Instruct-4bit"
@@ -31,10 +31,10 @@ import json
 
 config = {
     # 模型路径（使用 mlx-community 的 4bit 量化模型）
-    "model": "mlx-community/Qwen2.5-3B-Instruct-4bit",  # 3B 模型，适合大多数 Mac
+    "model": "/Users/newmind/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-4bit",  # 3B 模型，适合大多数 Mac
     
     # 数据目录
-    "data": "./data",
+    "data": "../dataset",
     
     # LoRA 参数
     "num_layers": 16,  # 改名：lora_layers -> num_layers
@@ -74,13 +74,30 @@ config = {
     "test": False,
 }
 
+# ================== 辅助函数 ==================
+
+def get_script_dir():
+    """获取脚本所在目录的绝对路径"""
+    return Path(__file__).parent.absolute()
+
+def resolve_path(path_str: str) -> Path:
+    """将相对路径解析为基于脚本目录的绝对路径"""
+    path = Path(path_str)
+    if path.is_absolute():
+        return path
+    # 相对路径基于脚本所在目录
+    return get_script_dir() / path
+
 # ================== 构建命令 ==================
 
 def build_command():
     """构建 MLX 训练命令"""
     
+    # 解析数据目录为绝对路径
+    data_path = resolve_path(config["data"])
+    
     # 创建输出目录
-    output_dir = Path(config["output_dir"])
+    output_dir = resolve_path(config["output_dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
     
     adapter_file = output_dir / "adapters.npz"
@@ -95,6 +112,7 @@ def build_command():
     print("=" * 60)
     print(json.dumps(config, indent=2, ensure_ascii=False))
     print("=" * 60)
+    print(f"数据目录: {data_path}")
     print(f"配置已保存到: {config_file}")
     print(f"适配器将保存到: {adapter_file}")
     print("=" * 60)
@@ -103,7 +121,7 @@ def build_command():
     cmd = [
         sys.executable, "-m", "mlx_lm", "lora",  # 修改调用方式
         "--model", config["model"],
-        "--data", config["data"],
+        "--data", str(data_path),  # 使用绝对路径
         "--train",  # 这是一个标志，不是参数
         "--batch-size", str(config["batch_size"]),
         "--iters", str(config["iters"]),
@@ -132,8 +150,15 @@ def build_command():
 def main():
     """执行训练"""
     
+    # 解析数据目录为绝对路径（基于脚本所在目录）
+    data_path = resolve_path(config["data"])
+    
+    print(f"脚本目录: {get_script_dir()}")
+    print(f"数据目录配置: {config['data']}")
+    print(f"解析后的数据目录: {data_path}")
+    print(f"数据目录是否存在: {data_path.exists()}")
+    
     # 检查数据目录
-    data_path = Path(config["data"])
     if not data_path.exists():
         print(f"错误: 数据目录不存在: {data_path}")
         print("\n请确保数据目录存在并包含以下文件之一:")
@@ -237,7 +262,7 @@ def print_usage():
 使用方法:
 
 1. 基本使用:
-   python mlx.py
+   python train.py
    
 2. 选择模型 (修改脚本中的 config["model"]):
    
