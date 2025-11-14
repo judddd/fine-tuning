@@ -119,6 +119,7 @@ def build_command():
     adapter_file = output_dir / "adapters.npz"
     
     # 构建 MLX-LM 训练配置（YAML 格式）
+    # 注意：MLX-LM 使用 lora_parameters 结构，而不是直接的 lora_rank/lora_alpha
     mlx_config = {
         "model": config["model"],
         "data": str(data_path),
@@ -128,15 +129,18 @@ def build_command():
         "iters": config["iters"],
         "learning_rate": config["learning_rate"],
         "num_layers": config["num_layers"],
-        "lora_rank": config["lora_rank"],
-        "lora_alpha": config["lora_alpha"],
-        "lora_dropout": config["lora_dropout"],
         "max_seq_length": config["max_seq_length"],
         "steps_per_report": config["steps_per_report"],
         "steps_per_eval": config["steps_per_eval"],
         "save_every": config["save_every"],
         "val_batches": config["val_batches"],
         "seed": config["seed"],
+        # LoRA 参数使用 lora_parameters 结构
+        "lora_parameters": {
+            "rank": config["lora_rank"],
+            "alpha": config["lora_alpha"],
+            "dropout": config["lora_dropout"],
+        },
     }
     
     # 添加可选参数
