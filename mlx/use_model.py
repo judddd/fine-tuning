@@ -64,7 +64,7 @@ def single_inference(model, tokenizer, generate_fn, prompt: str,
         tokenizer, 
         prompt=prompt,
         max_tokens=max_tokens,
-        temperature=temperature,
+        temp=temperature,  # MLX-LM 使用 temp 而不是 temperature
         verbose=False
     )
     return response
