@@ -135,7 +135,7 @@ class ModelManager:
             logger.info("Loading model...")
             self.model = AutoModelForCausalLM.from_pretrained(
                 self.model_path,
-                torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
+                dtype=torch.float16 if self.device == "cuda" else torch.float32,
                 device_map="auto" if self.device == "cuda" else None,
                 trust_remote_code=True,
                 local_files_only=True
