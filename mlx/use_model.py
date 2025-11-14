@@ -57,20 +57,20 @@ def load_model(model_name: str, adapter_path: Optional[str] = None):
     return model, tokenizer, generate
 
 def single_inference(model, tokenizer, generate_fn, prompt: str, 
-                     max_tokens: int = 500, temp: float = 0.7) -> str:
+                     max_tokens: int = 500, temperature: float = 0.7) -> str:
     """单次推理"""
     response = generate_fn(
         model, 
         tokenizer, 
         prompt=prompt,
         max_tokens=max_tokens,
-        temp=temp,
+        temperature=temperature,
         verbose=False
     )
     return response
 
 def interactive_mode(model, tokenizer, generate_fn, 
-                     max_tokens: int = 500, temp: float = 0.7):
+                     max_tokens: int = 500, temperature: float = 0.7):
     """交互式对话模式"""
     print("=" * 60)
     print("🤖 MLX-LM 交互式问答")
@@ -99,7 +99,7 @@ def interactive_mode(model, tokenizer, generate_fn,
                 continue
             
             print("\n🤖 AI> ", end="", flush=True)
-            response = single_inference(model, tokenizer, generate_fn, prompt, max_tokens, temp)
+            response = single_inference(model, tokenizer, generate_fn, prompt, max_tokens, temperature)
             print(response)
             print("\n" + "-" * 60 + "\n")
             
@@ -110,7 +110,7 @@ def interactive_mode(model, tokenizer, generate_fn,
             print(f"\n❌ 错误: {e}\n")
 
 def batch_inference(model, tokenizer, generate_fn, input_file: str, output_file: str,
-                    max_tokens: int = 500, temp: float = 0.7):
+                    max_tokens: int = 500, temperature: float = 0.7):
     """批量推理"""
     input_path = Path(input_file)
     output_path = Path(output_file)
@@ -140,7 +140,7 @@ def batch_inference(model, tokenizer, generate_fn, input_file: str, output_file:
                     continue
                 
                 print(f"处理 {i}: {prompt[:50]}...")
-                response = single_inference(model, tokenizer, generate_fn, prompt, max_tokens, temp)
+                response = single_inference(model, tokenizer, generate_fn, prompt, max_tokens, temperature)
                 
                 result = {
                     "prompt": prompt,
@@ -163,7 +163,7 @@ def batch_inference(model, tokenizer, generate_fn, input_file: str, output_file:
     print(f"   结果保存到: {output_path}")
 
 def serve_api(model, tokenizer, generate_fn, port: int = 8080, 
-              max_tokens: int = 500, temp: float = 0.7):
+              max_tokens: int = 500, temperature: float = 0.7):
     """启动 API 服务"""
     try:
         from flask import Flask, request, jsonify
@@ -192,7 +192,7 @@ def serve_api(model, tokenizer, generate_fn, port: int = 8080,
                 model, tokenizer, generate_fn,
                 prompt=prompt,
                 max_tokens=data.get('max_tokens', max_tokens),
-                temp=data.get('temperature', temp)
+                temperature=data.get('temperature', temperature)
             )
             
             return jsonify({
@@ -230,7 +230,7 @@ def serve_api(model, tokenizer, generate_fn, port: int = 8080,
                 model, tokenizer, generate_fn,
                 prompt=prompt,
                 max_tokens=data.get('max_tokens', max_tokens),
-                temp=data.get('temperature', temp)
+                temperature=data.get('temperature', temperature)
             )
             
             return jsonify({
