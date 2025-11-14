@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-MLX 训练脚本 - 简化版
-直接使用 MLX-LM 命令行接口
+MLX 训练脚本 - 使用 YAML 配置文件
+通过生成 config.yaml 并使用 --config 参数传递所有配置
 
 快速开始：
 1. 准备数据：将训练数据放在 ./data 目录下（train.jsonl）
@@ -13,6 +13,14 @@ MLX 训练脚本 - 简化版
 支持的模型格式：
 - HuggingFace 模型 ID: "mlx-community/Qwen2.5-3B-Instruct-4bit"
 - 本地路径: "/path/to/model" (需包含 config.json 和权重文件)
+
+配置方式：
+- 脚本会自动生成 train_config.yaml 文件
+- 所有 LoRA 参数（lora_rank, lora_alpha, lora_dropout）都会被正确使用
+- 使用 --config 参数传递给 MLX-LM
+
+依赖：
+- PyYAML: pip install PyYAML
 """
 
 import subprocess
@@ -20,6 +28,14 @@ import sys
 from pathlib import Path
 from datetime import datetime
 import json
+
+# 尝试导入 yaml，如果没有安装则提示
+try:
+    import yaml
+except ImportError:
+    print("错误: 需要安装 PyYAML 库")
+    print("请运行: pip install PyYAML")
+    sys.exit(1)
 
 # ================== 配置参数 ==================
 # 选项 1: HuggingFace 大模型（需要大内存）
@@ -91,7 +107,7 @@ def resolve_path(path_str: str) -> Path:
 # ================== 构建命令 ==================
 
 def build_command():
-    """构建 MLX 训练命令"""
+    """构建 MLX 训练命令（使用 YAML 配置文件）"""
     
     # 解析数据目录为绝对路径
     data_path = resolve_path(config["data"])
@@ -102,9 +118,42 @@ def build_command():
     
     adapter_file = output_dir / "adapters.npz"
     
-    # 保存配置
-    config_file = output_dir / "config.json"
-    with open(config_file, "w", encoding="utf-8") as f:
+    # 构建 MLX-LM 训练配置（YAML 格式）
+    mlx_config = {
+        "model": config["model"],
+        "data": str(data_path),
+        "train": True,
+        "adapter_path": str(adapter_file),
+        "batch_size": config["batch_size"],
+        "iters": config["iters"],
+        "learning_rate": config["learning_rate"],
+        "num_layers": config["num_layers"],
+        "lora_rank": config["lora_rank"],
+        "lora_alpha": config["lora_alpha"],
+        "lora_dropout": config["lora_dropout"],
+        "max_seq_length": config["max_seq_length"],
+        "steps_per_report": config["steps_per_report"],
+        "steps_per_eval": config["steps_per_eval"],
+        "save_every": config["save_every"],
+        "val_batches": config["val_batches"],
+        "seed": config["seed"],
+    }
+    
+    # 添加可选参数
+    if config["grad_checkpoint"]:
+        mlx_config["grad_checkpoint"] = True
+    
+    if config["test"]:
+        mlx_config["test"] = True
+    
+    # 保存 YAML 配置文件
+    yaml_config_file = output_dir / "train_config.yaml"
+    with open(yaml_config_file, "w", encoding="utf-8") as f:
+        yaml.dump(mlx_config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    
+    # 同时保存 JSON 配置（用于记录）
+    json_config_file = output_dir / "config.json"
+    with open(json_config_file, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2, ensure_ascii=False)
     
     print("=" * 60)
@@ -113,35 +162,21 @@ def build_command():
     print(json.dumps(config, indent=2, ensure_ascii=False))
     print("=" * 60)
     print(f"数据目录: {data_path}")
-    print(f"配置已保存到: {config_file}")
+    print(f"YAML 配置文件: {yaml_config_file}")
+    print(f"JSON 配置（记录）: {json_config_file}")
     print(f"适配器将保存到: {adapter_file}")
     print("=" * 60)
+    print("\nYAML 配置内容:")
+    print("-" * 60)
+    with open(yaml_config_file, "r", encoding="utf-8") as f:
+        print(f.read())
+    print("-" * 60)
     
-    # 构建命令行参数 (新版 MLX-LM API)
+    # 构建命令行参数（使用 --config 参数）
     cmd = [
-        sys.executable, "-m", "mlx_lm", "lora",  # 修改调用方式
-        "--model", config["model"],
-        "--data", str(data_path),  # 使用绝对路径
-        "--train",  # 这是一个标志，不是参数
-        "--batch-size", str(config["batch_size"]),
-        "--iters", str(config["iters"]),
-        "--learning-rate", str(config["learning_rate"]),
-        "--num-layers", str(config["num_layers"]),  # 改名：lora-layers -> num-layers
-        "--adapter-path", str(adapter_file),  # 改名：adapter-file -> adapter-path
-        "--steps-per-report", str(config["steps_per_report"]),
-        "--steps-per-eval", str(config["steps_per_eval"]),
-        "--save-every", str(config["save_every"]),
-        "--val-batches", str(config["val_batches"]),
-        "--max-seq-length", str(config["max_seq_length"]),
-        "--seed", str(config["seed"]),
+        sys.executable, "-m", "mlx_lm", "lora",
+        "--config", str(yaml_config_file),
     ]
-    
-    # 添加可选参数
-    if config["grad_checkpoint"]:
-        cmd.append("--grad-checkpoint")
-    
-    if config["test"]:
-        cmd.append("--test")
     
     return cmd, adapter_file
 
