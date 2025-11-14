@@ -135,12 +135,15 @@ def build_command():
         "save_every": config["save_every"],
         "val_batches": config["val_batches"],
         "seed": config["seed"],
-        # LoRA 参数使用 lora_parameters 结构
-        "lora_parameters": {
-            "rank": config["lora_rank"],
-            "alpha": config["lora_alpha"],
-            "dropout": config["lora_dropout"],
-        },
+    }
+    
+    # LoRA 参数使用 lora_parameters 结构
+    # scale = alpha / rank (MLX-LM 使用 scale 而不是 alpha)
+    lora_scale = config["lora_alpha"] / config["lora_rank"] if config["lora_rank"] > 0 else 1.0
+    mlx_config["lora_parameters"] = {
+        "rank": config["lora_rank"],
+        "scale": lora_scale,  # scale = alpha / rank
+        "dropout": config["lora_dropout"],
     }
     
     # 添加可选参数
