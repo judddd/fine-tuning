@@ -44,7 +44,7 @@ config = {
     
     # 训练参数
     "batch_size": 16,
-    "iters": 18750,
+    "iters": 1000, # （iters*batch/训练数据量=想要训练轮数） 总训练样本数 = 18750 × 16 = 300,000 个样本，如果你的数据只有 1000 条，每条会被训练 300 次
     "learning_rate": 5e-5,
     "max_seq_length": 2048,
     
@@ -57,8 +57,19 @@ config = {
     # 输出目录（自动根据模型名称和时间戳生成）
     "output_dir": f"saves/qwen-lora/train_{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}",
     
+    # ============ 精度和优化 ============
+    # 混合精度训练说明：
+    # - MLX 框架默认使用 bfloat16 混合精度（自动启用，无需配置）
+    # - 精度主要通过模型量化级别控制（4bit/8bit）
+    # - 4bit 模型：更省内存，速度更快，精度略低
+    # - 8bit 模型：平衡内存和精度
+    # - 16bit (fp16/bfloat16)：最高精度，内存占用最大
+    # 
+    # 当前模型已使用量化（4bit/8bit），混合精度自动生效
+    # 如需更高精度，使用未量化的模型或降低量化级别
+    
     # 其他
-    "grad_checkpoint": True,
+    "grad_checkpoint": True,  # 梯度检查点（节省内存，稍慢）
     "seed": 42,
     "test": False,
 }
