@@ -63,8 +63,6 @@ def single_inference(model, tokenizer, generate_fn, prompt: str,
         model, 
         tokenizer, 
         prompt=prompt,
-        max_tokens=max_tokens,
-        temp=temperature,  # MLX-LM 使用 temp 而不是 temperature
         verbose=False
     )
     return response
@@ -192,7 +190,7 @@ def serve_api(model, tokenizer, generate_fn, port: int = 8080,
                 model, tokenizer, generate_fn,
                 prompt=prompt,
                 max_tokens=data.get('max_tokens', max_tokens),
-                temperature=data.get('temperature', temperature)
+                temp=data.get('temperature', temp)
             )
             
             return jsonify({
@@ -230,7 +228,7 @@ def serve_api(model, tokenizer, generate_fn, port: int = 8080,
                 model, tokenizer, generate_fn,
                 prompt=prompt,
                 max_tokens=data.get('max_tokens', max_tokens),
-                temperature=data.get('temperature', temperature)
+                temp=data.get('temperature', temp)
             )
             
             return jsonify({
