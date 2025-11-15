@@ -117,8 +117,8 @@ POST /api/models/model_b/load
 
 > **提示**：
 > - 模型路径可以是本地路径或 HuggingFace 模型 ID（如 `mlx-community/Qwen2.5-3B-Instruct-4bit`）
-> - 适配器路径示例：`mlx/saves/qwen-lora/train_2025-11-15-00-36-05/adapters.npz`
-> - 如果不指定适配器路径，系统会自动查找 `mlx/saves/qwen-lora` 目录下最新的适配器
+> - 适配器路径示例：`mlx/saves/*/train_2025-11-15-00-36-05/adapters.npz`
+> - 如果不指定适配器路径，系统会自动查找 `mlx/saves/*` 目录下最新的适配器
 
 ### 步骤 2: 输入问题
 
@@ -131,7 +131,6 @@ POST /api/models/model_b/load
 ### 步骤 3: 调整参数（可选）
 
 - **Max Tokens**: 生成的最大 token 数量（默认 512）
-- **Temperature**: 控制随机性，值越高越随机（默认 0.7）
 - **Top P**: Nucleus sampling 参数（默认 0.9）
 
 ### 步骤 4: 生成对比

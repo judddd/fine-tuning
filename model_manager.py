@@ -13,7 +13,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def resolve_saves_path(saves_dir: str = "mlx/saves/qwen-lora") -> Optional[Path]:
+def resolve_saves_path(saves_dir: str = "mlx/saves") -> Optional[Path]:
     """
     解析适配器保存目录路径
     
@@ -43,12 +43,13 @@ def resolve_saves_path(saves_dir: str = "mlx/saves/qwen-lora") -> Optional[Path]
     return saves_path
 
 
-def find_latest_adapter(saves_dir: str = "mlx/saves/qwen-lora") -> Optional[Path]:
+def find_latest_adapter(saves_dir: str = "mlx/saves", model_type: Optional[str] = None) -> Optional[Path]:
     """
     自动查找最新的适配器
     
     Args:
-        saves_dir: 保存目录路径（相对于项目根目录或绝对路径）
+        saves_dir: 保存目录路径（相对于项目根目录或绝对路径，默认: mlx/saves）
+        model_type: 模型类型（文件夹名，如 qwen-lora），如果指定则只在该类型下查找
         
     Returns:
         最新的适配器文件路径，如果不存在则返回 None
@@ -57,18 +58,43 @@ def find_latest_adapter(saves_dir: str = "mlx/saves/qwen-lora") -> Optional[Path
     if saves_path is None:
         return None
     
-    # 查找所有 train_* 目录
-    train_dirs = sorted(
-        saves_path.glob("train_*"), 
-        key=lambda p: p.stat().st_mtime, 
-        reverse=True
-    )
+    all_adapters = []
     
-    for train_dir in train_dirs:
-        adapter_file = train_dir / "adapters.npz"
-        if adapter_file.exists():
-            logger.info(f"找到适配器: {adapter_file}")
-            return adapter_file
+    # 如果指定了模型类型，只在该类型下查找
+    if model_type:
+        model_type_dir = saves_path / model_type
+        if model_type_dir.exists() and model_type_dir.is_dir():
+            train_dirs = sorted(
+                model_type_dir.glob("train_*"), 
+                key=lambda p: p.stat().st_mtime, 
+                reverse=True
+            )
+            for train_dir in train_dirs:
+                adapter_file = train_dir / "adapters.npz"
+                if adapter_file.exists():
+                    all_adapters.append((adapter_file, adapter_file.stat().st_mtime))
+    else:
+        # 扫描所有模型类型目录
+        for model_type_dir in saves_path.iterdir():
+            if not model_type_dir.is_dir():
+                continue
+            
+            train_dirs = sorted(
+                model_type_dir.glob("train_*"), 
+                key=lambda p: p.stat().st_mtime, 
+                reverse=True
+            )
+            for train_dir in train_dirs:
+                adapter_file = train_dir / "adapters.npz"
+                if adapter_file.exists():
+                    all_adapters.append((adapter_file, adapter_file.stat().st_mtime))
+    
+    if all_adapters:
+        # 按时间排序，返回最新的
+        all_adapters.sort(key=lambda x: x[1], reverse=True)
+        latest_adapter = all_adapters[0][0]
+        logger.info(f"找到最新适配器: {latest_adapter}")
+        return latest_adapter
     
     logger.warning("未找到任何适配器文件")
     return None
@@ -151,49 +177,69 @@ def extract_adapter_info(config: Dict[str, Any]) -> Dict[str, Any]:
     return info
 
 
-def list_all_adapters(saves_dir: str = "mlx/saves/qwen-lora") -> list:
+def list_all_adapters(saves_dir: str = "mlx/saves") -> dict:
     """
-    列出所有可用的适配器（按时间排序，最新的在前）
+    列出所有可用的适配器，按模型类型分类（按时间排序，最新的在前）
     
     Args:
-        saves_dir: 保存目录路径（相对于项目根目录或绝对路径）
+        saves_dir: 保存目录路径（相对于项目根目录或绝对路径，默认: mlx/saves）
         
     Returns:
-        适配器列表，每个元素包含：
+        字典，键为模型类型（文件夹名，如 qwen-lora），值为适配器列表
+        每个适配器包含：
         - path: 适配器文件路径（字符串）
         - name: 适配器名称（train_YYYY-MM-DD-HH-MM-SS）
         - mtime: 修改时间戳
         - config: 适配器配置信息（如果存在）
+        - model_type: 模型类型（文件夹名）
     """
     saves_path = resolve_saves_path(saves_dir)
     if saves_path is None:
-        return []
+        return {}
     
-    adapters = []
-    # 查找所有 train_* 目录
-    train_dirs = sorted(
-        saves_path.glob("train_*"), 
-        key=lambda p: p.stat().st_mtime, 
-        reverse=True  # 最新的在前
-    )
+    adapters_by_type = {}
     
-    for train_dir in train_dirs:
-        adapter_file = train_dir / "adapters.npz"
-        if adapter_file.exists():
-            adapter_info = {
-                "path": str(adapter_file),
-                "name": train_dir.name,
-                "mtime": adapter_file.stat().st_mtime
-            }
-            
-            # 尝试加载配置信息
-            config = load_adapter_config(adapter_file)
-            if config:
-                adapter_info["config"] = extract_adapter_info(config)
-            
-            adapters.append(adapter_info)
+    # 扫描 saves 目录下的所有子文件夹
+    if not saves_path.exists():
+        logger.warning(f"适配器保存目录不存在: {saves_path}")
+        return {}
     
-    return adapters
+    # 遍历 saves 目录下的所有子文件夹
+    for model_type_dir in saves_path.iterdir():
+        if not model_type_dir.is_dir():
+            continue
+        
+        model_type = model_type_dir.name
+        adapters = []
+        
+        # 在每个模型类型目录下查找所有 train_* 目录
+        train_dirs = sorted(
+            model_type_dir.glob("train_*"), 
+            key=lambda p: p.stat().st_mtime, 
+            reverse=True  # 最新的在前
+        )
+        
+        for train_dir in train_dirs:
+            adapter_file = train_dir / "adapters.npz"
+            if adapter_file.exists():
+                adapter_info = {
+                    "path": str(adapter_file),
+                    "name": train_dir.name,
+                    "mtime": adapter_file.stat().st_mtime,
+                    "model_type": model_type
+                }
+                
+                # 尝试加载配置信息
+                config = load_adapter_config(adapter_file)
+                if config:
+                    adapter_info["config"] = extract_adapter_info(config)
+                
+                adapters.append(adapter_info)
+        
+        if adapters:
+            adapters_by_type[model_type] = adapters
+    
+    return adapters_by_type
 
 
 def detect_model_name_from_path(model_path: str) -> str:
@@ -267,7 +313,7 @@ class ModelManager:
         model_name: Optional[str] = None,
         adapter_path: Optional[str] = None,
         no_adapter: bool = False,
-        saves_dir: str = "mlx/saves/qwen-lora"
+        saves_dir: str = "mlx/saves"
     ):
         """
         初始化模型管理器

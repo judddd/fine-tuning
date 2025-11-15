@@ -662,14 +662,25 @@
             model_a: false,
             model_b: false
         };
+        // 全局变量：适配器列表（扁平化，用于快速查找）
         let adaptersList = [];
+        // 按模型类型分组的适配器（用于显示）
+        let adaptersByType = {};
 
         // 加载适配器列表
         async function loadAdapters() {
             try {
                 const response = await fetch('/api/adapters');
                 const data = await response.json();
-                adaptersList = data.adapters || [];
+                adaptersByType = data.adapters_by_type || {};
+
+                // 扁平化适配器列表（按时间排序，最新的在前）
+                adaptersList = [];
+                Object.keys(adaptersByType).forEach(modelType => {
+                    adaptersList.push(...adaptersByType[modelType]);
+                });
+                // 按时间排序，最新的在前
+                adaptersList.sort((a, b) => b.mtime - a.mtime);
 
                 const select = document.getElementById('adapter-select');
                 select.innerHTML = '<option value="">-- 自动使用最新适配器 --</option>';
@@ -677,28 +688,40 @@
                 if (adaptersList.length === 0) {
                     select.innerHTML += '<option value="" disabled>未找到适配器</option>';
                 } else {
-                    adaptersList.forEach(adapter => {
-                        const option = document.createElement('option');
-                        option.value = adapter.path;
-                        // 显示适配器名称和时间
-                        const date = new Date(adapter.mtime * 1000);
-                        const timeStr = date.toLocaleString('zh-CN', {
-                            year: 'numeric',
-                            month: '2-digit',
-                            day: '2-digit',
-                            hour: '2-digit',
-                            minute: '2-digit'
+                    // 按模型类型分组显示
+                    Object.keys(adaptersByType).sort().forEach(modelType => {
+                        const adapters = adaptersByType[modelType];
+
+                        // 添加模型类型分组标题（optgroup）
+                        const optgroup = document.createElement('optgroup');
+                        optgroup.label = `📁 ${modelType} (${adapters.length}个适配器)`;
+
+                        adapters.forEach(adapter => {
+                            const option = document.createElement('option');
+                            option.value = adapter.path;
+
+                            // 显示适配器名称和时间
+                            const date = new Date(adapter.mtime * 1000);
+                            const timeStr = date.toLocaleString('zh-CN', {
+                                year: 'numeric',
+                                month: '2-digit',
+                                day: '2-digit',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                            });
+
+                            // 如果有配置信息，显示 LoRA 参数
+                            let displayText = `${adapter.name} (${timeStr})`;
+                            if (adapter.config) {
+                                const cfg = adapter.config;
+                                displayText += ` - LoRA: R${cfg.lora_rank}/S${cfg.lora_scale} | LR: ${cfg.learning_rate} | Iter: ${cfg.iters}`;
+                            }
+
+                            option.textContent = displayText;
+                            optgroup.appendChild(option);
                         });
 
-                        // 如果有配置信息，显示 LoRA 参数
-                        let displayText = `${adapter.name} (${timeStr})`;
-                        if (adapter.config) {
-                            const cfg = adapter.config;
-                            displayText += ` - LoRA: R${cfg.lora_rank}/S${cfg.lora_scale} | LR: ${cfg.learning_rate} | Iter: ${cfg.iters}`;
-                        }
-
-                        option.textContent = displayText;
-                        select.appendChild(option);
+                        select.appendChild(optgroup);
                     });
                 }
             } catch (error) {
@@ -1164,7 +1187,7 @@
 
         // 定期检查状态和刷新适配器列表
         setInterval(checkStatus, 10000);
-        setInterval(loadAdapters, 30000); // 每30秒刷新一次适配器列表
+        setInterval(loadAdapters, 5000); // 每5秒刷新一次适配器列表
     </script>
 </body>
 

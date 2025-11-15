@@ -52,7 +52,7 @@ class ModelConfig(BaseModel):
     model_name: Optional[str] = None
     adapter_path: Optional[str] = None  # 适配器文件路径
     no_adapter: bool = False  # 是否不使用适配器（使用基础模型）
-    saves_dir: Optional[str] = None  # 适配器保存目录（用于自动查找，默认: mlx/saves/qwen-lora）
+    saves_dir: Optional[str] = None  # 适配器保存目录（用于自动查找，默认: mlx/saves）
 
 
 class GenerateRequest(BaseModel):
@@ -90,7 +90,7 @@ async def load_model(model_id: str, config: ModelConfig):
     
     # 创建新模型管理器
     model_name = config.model_name or f"Model {model_id.upper()}"
-    saves_dir = config.saves_dir or "mlx/saves/qwen-lora"
+    saves_dir = config.saves_dir or "mlx/saves"
     manager = ModelManager(
         model_path=config.model_path,
         model_name=model_name,
@@ -175,19 +175,24 @@ async def get_all_status():
 @app.get("/api/adapters")
 async def get_adapters(saves_dir: Optional[str] = None):
     """
-    获取所有可用的适配器列表
+    获取所有可用的适配器列表，按模型类型分类
     
     Args:
-        saves_dir: 适配器保存目录（可选，默认: mlx/saves/qwen-lora）
+        saves_dir: 适配器保存目录（可选，默认: mlx/saves）
     
     Returns:
-        适配器列表，按时间排序（最新的在前）
+        适配器字典，按模型类型分类，每个类型下的适配器按时间排序（最新的在前）
     """
-    saves_dir = saves_dir or "mlx/saves/qwen-lora"
-    adapters = list_all_adapters(saves_dir)
+    saves_dir = saves_dir or "mlx/saves"
+    adapters_by_type = list_all_adapters(saves_dir)
+    
+    # 计算总数
+    total_count = sum(len(adapters) for adapters in adapters_by_type.values())
+    
     return {
-        "adapters": adapters,
-        "count": len(adapters)
+        "adapters_by_type": adapters_by_type,
+        "model_types": list(adapters_by_type.keys()),
+        "total_count": total_count
     }
 
 
