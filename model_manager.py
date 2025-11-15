@@ -74,6 +74,62 @@ def find_latest_adapter(saves_dir: str = "mlx/saves/qwen-lora") -> Optional[Path
     return None
 
 
+def load_adapter_config(adapter_path: Path) -> Optional[Dict[str, Any]]:
+    """
+    加载适配器配置文件
+    
+    Args:
+        adapter_path: 适配器文件路径（adapters.npz）
+        
+    Returns:
+        配置字典，如果文件不存在则返回 None
+    """
+    # adapter_config.json 在 adapters.npz 的同一目录下
+    config_file = adapter_path.parent / "adapter_config.json"
+    if not config_file.exists():
+        return None
+    
+    try:
+        with open(config_file, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        logger.warning(f"无法读取适配器配置 {config_file}: {e}")
+        return None
+
+
+def extract_adapter_info(config: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    从适配器配置中提取重要信息
+    
+    Args:
+        config: 适配器配置字典
+        
+    Returns:
+        提取的重要信息字典
+    """
+    info = {}
+    
+    # LoRA 参数
+    if "lora_parameters" in config:
+        lora = config["lora_parameters"]
+        info["lora_rank"] = lora.get("rank", "N/A")
+        info["lora_scale"] = lora.get("scale", "N/A")
+        info["lora_dropout"] = lora.get("dropout", "N/A")
+    
+    # 训练参数
+    info["learning_rate"] = config.get("learning_rate", "N/A")
+    info["batch_size"] = config.get("batch_size", "N/A")
+    info["iters"] = config.get("iters", "N/A")
+    info["num_layers"] = config.get("num_layers", "N/A")
+    info["max_seq_length"] = config.get("max_seq_length", "N/A")
+    
+    # 其他重要参数
+    info["grad_checkpoint"] = config.get("grad_checkpoint", False)
+    info["optimizer"] = config.get("optimizer", "N/A")
+    
+    return info
+
+
 def list_all_adapters(saves_dir: str = "mlx/saves/qwen-lora") -> list:
     """
     列出所有可用的适配器（按时间排序，最新的在前）
@@ -86,6 +142,7 @@ def list_all_adapters(saves_dir: str = "mlx/saves/qwen-lora") -> list:
         - path: 适配器文件路径（字符串）
         - name: 适配器名称（train_YYYY-MM-DD-HH-MM-SS）
         - mtime: 修改时间戳
+        - config: 适配器配置信息（如果存在）
     """
     saves_path = resolve_saves_path(saves_dir)
     if saves_path is None:
@@ -102,11 +159,18 @@ def list_all_adapters(saves_dir: str = "mlx/saves/qwen-lora") -> list:
     for train_dir in train_dirs:
         adapter_file = train_dir / "adapters.npz"
         if adapter_file.exists():
-            adapters.append({
+            adapter_info = {
                 "path": str(adapter_file),
                 "name": train_dir.name,
                 "mtime": adapter_file.stat().st_mtime
-            })
+            }
+            
+            # 尝试加载配置信息
+            config = load_adapter_config(adapter_file)
+            if config:
+                adapter_info["config"] = extract_adapter_info(config)
+            
+            adapters.append(adapter_info)
     
     return adapters
 
@@ -322,11 +386,14 @@ class ModelManager:
         """
         流式生成文本（MLX 方式）
         
+        注意：MLX-LM 的 generate 函数不支持 max_tokens、temperature、top_p 等参数
+        这些参数会被忽略，使用模型的默认设置
+        
         Args:
             prompt: 输入提示词
-            max_new_tokens: 最大生成token数（MLX 使用 max_tokens）
-            temperature: 温度参数（MLX 使用 temp）
-            top_p: nucleus sampling参数（MLX 使用 top_p）
+            max_new_tokens: 最大生成token数（MLX 不支持，参数保留以兼容 API）
+            temperature: 温度参数（MLX 不支持，参数保留以兼容 API）
+            top_p: nucleus sampling参数（MLX 不支持，参数保留以兼容 API）
             
         Yields:
             生成的文本片段
@@ -336,22 +403,13 @@ class ModelManager:
             return
         
         try:
-            # MLX-LM 的 generate 函数是同步的，需要手动实现流式输出
-            # 这里使用一个简单的实现：分块生成
-            # 注意：MLX-LM 的 generate 函数本身不支持流式输出
-            # 我们可以通过多次调用或使用回调来实现类似效果
-            
-            # 使用 MLX-LM 的 generate 函数
-            # 注意：MLX-LM 的参数名是 max_tokens 和 temp，不是 max_new_tokens 和 temperature
+            # MLX-LM 的 generate 函数只支持 prompt 和 verbose 参数
+            # 参考 use_model.py 的实现，不传递 max_tokens、temperature 等参数
             response = self.generate_fn(
                 self.model,
                 self.tokenizer,
                 prompt=prompt,
-                max_tokens=max_new_tokens,
-                temp=temperature,
-                top_p=top_p,
-                verbose=False,
-                **kwargs
+                verbose=False
             )
             
             # 将完整响应分块返回（模拟流式输出）
@@ -378,16 +436,14 @@ class ModelManager:
             "framework": "MLX"
         }
         
+        # 如果使用了适配器，尝试加载适配器配置信息
+        if self.adapter_path and self.adapter_path.exists():
+            config = load_adapter_config(self.adapter_path)
+            if config:
+                adapter_info = extract_adapter_info(config)
+                info["adapter_config"] = adapter_info
+        
         if self.is_loaded():
-            # MLX 模型信息
-            try:
-                # 尝试获取模型参数数量
-                if hasattr(self.model, 'parameters'):
-                    num_parameters = sum(p.size for p in self.model.parameters() if hasattr(p, 'size'))
-                    info["num_parameters"] = f"{num_parameters:,}" if num_parameters > 0 else "unknown"
-            except:
-                pass
-            
             info["device"] = "Apple Silicon (MLX)"
         
         return info

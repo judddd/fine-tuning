@@ -535,7 +535,15 @@
                             hour: '2-digit',
                             minute: '2-digit'
                         });
-                        option.textContent = `${adapter.name} (${timeStr})`;
+
+                        // 如果有配置信息，显示 LoRA 参数
+                        let displayText = `${adapter.name} (${timeStr})`;
+                        if (adapter.config) {
+                            const cfg = adapter.config;
+                            displayText += ` - LoRA: R${cfg.lora_rank}/S${cfg.lora_scale} | LR: ${cfg.learning_rate} | Iter: ${cfg.iters}`;
+                        }
+
+                        option.textContent = displayText;
                         select.appendChild(option);
                     });
                 }
@@ -569,12 +577,30 @@
             if (loaded) {
                 indicator.classList.add('loaded');
                 if (info) {
-                    infoDiv.innerHTML = `
-                        <strong>${info.name}</strong><br>
-                        设备: ${info.device}<br>
-                        参数量: ${info.num_parameters}<br>
-                        精度: ${info.dtype}
-                    `;
+                    let html = `<strong>${info.name}</strong><br>`;
+
+                    // 设备信息
+                    if (info.device) {
+                        html += `设备: ${info.device}<br>`;
+                    }
+
+                    // 如果使用了适配器，显示适配器配置信息
+                    if (info.using_adapter && info.adapter_config) {
+                        const cfg = info.adapter_config;
+                        html += `<br><strong style="color: #667eea;">📊 LoRA 配置:</strong><br>`;
+                        html += `Rank: ${cfg.lora_rank} | Scale: ${cfg.lora_scale} | Dropout: ${cfg.lora_dropout}<br>`;
+                        html += `<strong style="color: #667eea;">⚙️ 训练参数:</strong><br>`;
+                        html += `学习率: ${cfg.learning_rate} | Batch: ${cfg.batch_size} | Iterations: ${cfg.iters}<br>`;
+                        html += `LoRA 层数: ${cfg.num_layers} | 最大长度: ${cfg.max_seq_length}<br>`;
+                        if (cfg.optimizer && cfg.optimizer !== 'N/A') {
+                            html += `优化器: ${cfg.optimizer}`;
+                        }
+                    } else {
+                        // 基础模型，显示简单信息
+                        html += `基础模型（未使用适配器）`;
+                    }
+
+                    infoDiv.innerHTML = html;
                     infoDiv.classList.add('show');
                 }
             } else {
