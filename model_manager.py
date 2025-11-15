@@ -229,9 +229,15 @@ class ModelManager:
         try:
             from mlx_lm import load, generate
             self._mlx_available = True
-        except ImportError:
+            logger.debug("MLX-LM 导入成功")
+        except ImportError as e:
             self._mlx_available = False
-            logger.error("MLX-LM 未安装，请运行: pip install mlx-lm")
+            logger.error(f"MLX-LM 导入失败 (ImportError): {e}")
+            logger.error("请运行: pip install mlx-lm")
+        except Exception as e:
+            self._mlx_available = False
+            logger.error(f"MLX-LM 导入失败 (其他错误): {type(e).__name__}: {e}")
+            logger.error("请检查 MLX-LM 是否正确安装: pip install mlx-lm")
     
     def load_model(self) -> bool:
         """
@@ -240,13 +246,24 @@ class ModelManager:
         Returns:
             是否加载成功
         """
-        if not self._mlx_available:
-            logger.error("MLX-LM 未安装，无法加载模型")
-            return False
-        
+        # 再次尝试导入（以防运行时环境变化）
         try:
             from mlx_lm import load, generate
-            
+        except ImportError as e:
+            logger.error(f"MLX-LM 导入失败: {e}")
+            logger.error("请确保已安装 MLX-LM: pip install mlx-lm")
+            logger.error("如果已安装，请检查 Python 环境是否正确")
+            return False
+        except Exception as e:
+            logger.error(f"MLX-LM 导入时发生错误: {type(e).__name__}: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return False
+        
+        if not self._mlx_available:
+            logger.warning("初始化时 MLX-LM 不可用，但当前导入成功，继续加载...")
+        
+        try:
             logger.info(f"🔄 加载模型: {self.model_path}")
             
             # 检查适配器路径（如果指定了）
