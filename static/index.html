@@ -522,10 +522,14 @@
                 style="margin-bottom: 30px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);">
                 <label style="font-size: 16px; font-weight: 600; color: #667eea; margin-bottom: 10px;">📦
                     模型路径（两个模型共用）</label>
-                <input type="text" id="shared-model-path"
-                    placeholder="/Users/newmind/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-4bit"
-                    style="font-size: 15px;">
-                <small style="display: block; margin-top: 8px; color: #6c757d;">支持本地路径或 HuggingFace 模型 ID</small>
+                <div style="position: relative;">
+                    <input type="text" id="shared-model-path" list="model-path-history"
+                        placeholder="/Users/newmind/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-4bit"
+                        style="font-size: 15px; width: 100%;">
+                    <datalist id="model-path-history"></datalist>
+                </div>
+                <small style="display: block; margin-top: 8px; color: #6c757d;">支持本地路径或 HuggingFace 模型
+                    ID（支持历史记录选择）</small>
             </div>
 
             <div class="models-grid">
@@ -586,7 +590,12 @@
 
         <div class="prompt-section">
             <h3>💬 输入提示词</h3>
-            <textarea class="prompt-input" id="prompt" placeholder="在此输入你的问题或提示词..."></textarea>
+            <div style="position: relative;">
+                <textarea class="prompt-input" id="prompt" placeholder="在此输入你的问题或提示词..."></textarea>
+                <div id="prompt-history-dropdown"
+                    style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #ddd; border-radius: 4px; max-height: 200px; overflow-y: auto; z-index: 1000; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                </div>
+            </div>
 
             <div class="generate-section">
                 <div class="params">
@@ -666,6 +675,9 @@
         let adaptersList = [];
         // 按模型类型分组的适配器（用于显示）
         let adaptersByType = {};
+        // 历史记录
+        let modelPathHistory = [];
+        let promptHistory = [];
 
         // 加载适配器列表
         async function loadAdapters() {
@@ -870,6 +882,11 @@
 
         async function generateComparison() {
             const prompt = document.getElementById('prompt').value.trim();
+
+            // 保存提示词历史
+            if (prompt) {
+                savePromptHistory();
+            }
 
             if (!prompt) {
                 alert('请输入提示词');
@@ -1181,9 +1198,162 @@
             }
         }
 
+        // 加载历史记录
+        async function loadHistory() {
+            try {
+                // 加载模型路径历史
+                const modelPathsResponse = await fetch('/api/history/model-paths');
+                const modelPathsData = await modelPathsResponse.json();
+                modelPathHistory = modelPathsData.history || [];
+
+                // 更新 datalist
+                const modelPathDatalist = document.getElementById('model-path-history');
+                modelPathDatalist.innerHTML = '';
+                modelPathHistory.forEach(path => {
+                    const option = document.createElement('option');
+                    option.value = path;
+                    modelPathDatalist.appendChild(option);
+                });
+
+                // 加载提示词历史
+                const promptsResponse = await fetch('/api/history/prompts');
+                const promptsData = await promptsResponse.json();
+                promptHistory = promptsData.history || [];
+
+                // 更新提示词下拉列表（textarea 不支持 datalist，使用自定义下拉）
+                updatePromptHistoryDropdown();
+            } catch (error) {
+                console.error('Failed to load history:', error);
+            }
+        }
+
+        // 更新提示词历史下拉列表
+        function updatePromptHistoryDropdown() {
+            const dropdown = document.getElementById('prompt-history-dropdown');
+            if (!dropdown) return;
+
+            dropdown.innerHTML = '';
+
+            if (promptHistory.length === 0) {
+                dropdown.style.display = 'none';
+                return;
+            }
+
+            // 创建历史记录项
+            promptHistory.forEach((prompt, index) => {
+                const item = document.createElement('div');
+                item.style.cssText = 'padding: 10px; cursor: pointer; border-bottom: 1px solid #eee; transition: background 0.2s;';
+                item.textContent = prompt.length > 100 ? prompt.substring(0, 100) + '...' : prompt;
+                item.title = prompt; // 完整提示词作为 tooltip
+
+                // 鼠标悬停效果
+                item.addEventListener('mouseenter', function () {
+                    this.style.background = '#f0f0f0';
+                });
+                item.addEventListener('mouseleave', function () {
+                    this.style.background = 'white';
+                });
+
+                // 点击选择
+                item.addEventListener('click', function () {
+                    document.getElementById('prompt').value = prompt;
+                    dropdown.style.display = 'none';
+                });
+
+                dropdown.appendChild(item);
+            });
+        }
+
+        // 显示提示词历史下拉
+        function showPromptHistory() {
+            const dropdown = document.getElementById('prompt-history-dropdown');
+            const promptInput = document.getElementById('prompt');
+            if (!dropdown || !promptInput) return;
+
+            if (promptHistory.length > 0) {
+                dropdown.style.display = 'block';
+            }
+        }
+
+        // 隐藏提示词历史下拉
+        function hidePromptHistory() {
+            // 延迟隐藏，以便点击选项有时间触发
+            setTimeout(() => {
+                const dropdown = document.getElementById('prompt-history-dropdown');
+                if (dropdown) {
+                    dropdown.style.display = 'none';
+                }
+            }, 200);
+        }
+
+        // 保存模型路径历史
+        async function saveModelPathHistory() {
+            const modelPath = document.getElementById('shared-model-path').value.trim();
+            if (modelPath) {
+                try {
+                    await fetch('/api/history/model-paths', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ model_path: modelPath })
+                    });
+                    // 重新加载历史记录
+                    await loadHistory();
+                } catch (error) {
+                    console.error('Failed to save model path history:', error);
+                }
+            }
+        }
+
+        // 保存提示词历史
+        async function savePromptHistory() {
+            const prompt = document.getElementById('prompt').value.trim();
+            if (prompt) {
+                try {
+                    await fetch('/api/history/prompts', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ prompt: prompt })
+                    });
+                    // 重新加载历史记录
+                    await loadHistory();
+                } catch (error) {
+                    console.error('Failed to save prompt history:', error);
+                }
+            }
+        }
+
+        // 初始化事件监听
+        document.addEventListener('DOMContentLoaded', function () {
+            const modelPathInput = document.getElementById('shared-model-path');
+            if (modelPathInput) {
+                modelPathInput.addEventListener('blur', saveModelPathHistory);
+            }
+
+            const promptInput = document.getElementById('prompt');
+            if (promptInput) {
+                promptInput.addEventListener('blur', savePromptHistory);
+                promptInput.addEventListener('focus', showPromptHistory);
+                promptInput.addEventListener('blur', hidePromptHistory);
+            }
+
+            // 点击外部关闭下拉
+            document.addEventListener('click', function (e) {
+                const dropdown = document.getElementById('prompt-history-dropdown');
+                const promptInput = document.getElementById('prompt');
+                if (dropdown && promptInput && !dropdown.contains(e.target) && e.target !== promptInput) {
+                    dropdown.style.display = 'none';
+                }
+            });
+        });
+
         // 初始化
         loadAdapters();
         checkStatus();
+        loadHistory();
 
         // 定期检查状态和刷新适配器列表
         setInterval(checkStatus, 10000);

@@ -53,3 +53,6 @@ mlx/saves/
 dataset/
 
 mlx/*.json
+
+# 历史记录数据
+data/

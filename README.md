@@ -163,10 +163,10 @@ POST /api/models/model_b/load
 
 ### 适配器路径
 
-适配器文件通常保存在 `mlx/saves/qwen-lora/train_YYYY-MM-DD-HH-MM-SS/adapters.npz`
+适配器文件通常保存在 `mlx/saves/*/train_YYYY-MM-DD-HH-MM-SS/adapters.npz`
 
 **自动查找适配器**：
-- 如果不指定 `adapter_path`，系统会自动在 `mlx/saves/qwen-lora` 目录下查找最新的适配器
+- 如果不指定 `adapter_path`，系统会自动在 `mlx/saves/*` 目录下查找最新的适配器
 - 查找逻辑：按修改时间排序，选择最新的 `train_*/adapters.npz` 文件
 
 **手动指定适配器**：
