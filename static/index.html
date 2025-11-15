@@ -436,6 +436,80 @@
                 transform: rotate(360deg);
             }
         }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-content {
+            background-color: white;
+            margin: 10% auto;
+            padding: 30px;
+            border-radius: 12px;
+            width: 80%;
+            max-width: 800px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-header h3 {
+            margin: 0;
+            color: #667eea;
+        }
+
+        .close {
+            color: #aaa;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .close:hover {
+            color: #000;
+        }
+
+        .command-box {
+            background: #f4f4f4;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+            font-size: 13px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            margin: 15px 0;
+            position: relative;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 5px 15px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .copy-btn:hover {
+            background: #5568d3;
+        }
     </style>
 </head>
 
@@ -479,6 +553,10 @@
                         </button>
                         <button class="btn btn-secondary" onclick="unloadModel('model_a')">
                             卸载
+                        </button>
+                        <button class="btn btn-secondary" onclick="showFuseCommand()"
+                            style="background: #28a745; color: white;">
+                            🔗 融合命令
                         </button>
                     </div>
                     <div class="model-info" id="info-a"></div>
@@ -558,6 +636,23 @@
                         <div class="empty-state">加载模型 B 并生成以查看输出</div>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 融合命令模态框 -->
+    <div id="fuseModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>🔗 融合模型命令</h3>
+                <span class="close" onclick="closeFuseModal()">&times;</span>
+            </div>
+            <p>复制以下命令到终端执行，将适配器融合到基础模型中：</p>
+            <div class="command-box" id="fuseCommand">
+                <button class="copy-btn" onclick="copyFuseCommand()">复制</button>
+            </div>
+            <div style="text-align: right; margin-top: 15px;">
+                <button class="btn btn-secondary" onclick="closeFuseModal()">关闭</button>
             </div>
         </div>
     </div>
@@ -963,6 +1058,72 @@
             } catch (error) {
                 outputDiv.innerHTML = `<div class="error">错误: ${error.message}</div>`;
                 clearInterval(timerInterval);
+            }
+        }
+
+        // 显示融合命令
+        function showFuseCommand() {
+            const modelPath = document.getElementById('shared-model-path').value.trim();
+            const adapterPath = document.getElementById('adapter-select').value;
+
+            if (!modelPath) {
+                alert('请先填写模型路径');
+                return;
+            }
+
+            if (!adapterPath) {
+                alert('请先选择适配器');
+                return;
+            }
+
+            // 从适配器路径中提取目录路径（去掉 adapters.npz）
+            let adapterDir = adapterPath;
+            if (adapterPath.endsWith('/adapters.npz')) {
+                adapterDir = adapterPath.replace('/adapters.npz', '');
+            } else if (adapterPath.endsWith('\\adapters.npz')) {
+                adapterDir = adapterPath.replace('\\adapters.npz', '');
+            }
+
+            // 生成默认保存路径（基于适配器目录名）
+            const adapterName = adapterDir.split(/[/\\]/).pop();
+            const savePath = `fused_model_${adapterName}`;
+
+            // 生成命令
+            const command = `mlx_lm.fuse \\\n    --model ${modelPath} \\\n    --adapter-path ${adapterDir} \\\n    --save-path ${savePath}`;
+
+            // 显示命令
+            document.getElementById('fuseCommand').textContent = command;
+            document.getElementById('fuseModal').style.display = 'block';
+        }
+
+        // 关闭模态框
+        function closeFuseModal() {
+            document.getElementById('fuseModal').style.display = 'none';
+        }
+
+        // 复制命令
+        function copyFuseCommand() {
+            const command = document.getElementById('fuseCommand').textContent;
+            navigator.clipboard.writeText(command).then(() => {
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = '已复制!';
+                btn.style.background = '#28a745';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.style.background = '#667eea';
+                }, 2000);
+            }).catch(err => {
+                console.error('复制失败:', err);
+                alert('复制失败，请手动选择文本复制');
+            });
+        }
+
+        // 点击模态框外部关闭
+        window.onclick = function (event) {
+            const modal = document.getElementById('fuseModal');
+            if (event.target == modal) {
+                closeFuseModal();
             }
         }
 
