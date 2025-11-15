@@ -303,13 +303,72 @@
         .output-content {
             padding: 20px;
             min-height: 300px;
-            max-height: 600px;
+            max-height: 1200px;
             overflow-y: auto;
             font-size: 15px;
             line-height: 1.8;
             color: #333;
-            white-space: pre-wrap;
             word-wrap: break-word;
+        }
+
+        .output-content pre {
+            background: #f4f4f4;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 12px;
+            overflow-x: auto;
+            margin: 10px 0;
+        }
+
+        .output-content code {
+            background: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
+            font-size: 14px;
+        }
+
+        .output-content pre code {
+            background: transparent;
+            padding: 0;
+        }
+
+        .output-content h1,
+        .output-content h2,
+        .output-content h3 {
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+
+        .output-content ul,
+        .output-content ol {
+            margin: 10px 0;
+            padding-left: 30px;
+        }
+
+        .output-content blockquote {
+            border-left: 4px solid #ddd;
+            padding-left: 15px;
+            margin: 10px 0;
+            color: #666;
+        }
+
+        .output-content table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 10px 0;
+        }
+
+        .output-content table th,
+        .output-content table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+
+        .output-content table th {
+            background: #f4f4f4;
+            font-weight: 600;
         }
 
         .output-content::-webkit-scrollbar {
@@ -502,6 +561,9 @@
             </div>
         </div>
     </div>
+
+    <!-- Markdown 渲染库 -->
+    <script src="https://cdn.jsdelivr.net/npm/marked@11.1.1/marked.min.js"></script>
 
     <script>
         let modelStatus = {
@@ -750,11 +812,38 @@
 
             outputDiv.innerHTML = '';
 
+            // 累积文本内容用于 Markdown 渲染
+            let accumulatedText = '';
+
             const startTime = Date.now();
             let timerInterval = setInterval(() => {
                 const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
                 timerSpan.textContent = `${elapsed}s`;
             }, 100);
+
+            // 配置 marked 选项
+            if (typeof marked !== 'undefined') {
+                marked.setOptions({
+                    breaks: true,  // 支持换行
+                    gfm: true,     // 支持 GitHub Flavored Markdown
+                });
+            }
+
+            // 渲染 Markdown 的函数
+            function renderMarkdown(text) {
+                if (typeof marked !== 'undefined') {
+                    try {
+                        return marked.parse(text);
+                    } catch (e) {
+                        console.error('Markdown 渲染错误:', e);
+                        // 如果渲染失败，使用转义后的 HTML
+                        return text.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+                    }
+                } else {
+                    // 如果 marked 未加载，使用简单的转义
+                    return text.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+                }
+            }
 
             try {
                 const response = await fetch('/api/generate/stream', {
@@ -792,13 +881,18 @@
                                 clearInterval(timerInterval);
                                 const finalTime = ((Date.now() - startTime) / 1000).toFixed(1);
                                 timerSpan.textContent = `✓ ${finalTime}s`;
+                                // 最终渲染
+                                outputDiv.innerHTML = renderMarkdown(accumulatedText);
+                                outputDiv.scrollTop = outputDiv.scrollHeight;
                                 break;
                             } else if (data.startsWith('[ERROR]')) {
                                 outputDiv.innerHTML += `<div class="error">错误: ${data}</div>`;
                                 clearInterval(timerInterval);
                                 break;
                             } else {
-                                outputDiv.textContent += data;
+                                accumulatedText += data;
+                                // 实时渲染 Markdown（可能会有性能影响，但提供更好的用户体验）
+                                outputDiv.innerHTML = renderMarkdown(accumulatedText);
                                 outputDiv.scrollTop = outputDiv.scrollHeight;
                             }
                         }
