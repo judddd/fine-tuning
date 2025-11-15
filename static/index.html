@@ -1059,17 +1059,27 @@
         }
 
         // 显示融合命令
-        function showFuseCommand() {
+        async function showFuseCommand() {
             const modelPath = document.getElementById('shared-model-path').value.trim();
-            const adapterPath = document.getElementById('adapter-select').value;
 
             if (!modelPath) {
                 alert('请先填写模型路径');
                 return;
             }
 
+            // 先刷新适配器列表，确保获取最新的
+            await loadAdapters();
+
+            // 获取当前选择的适配器路径
+            let adapterPath = document.getElementById('adapter-select').value;
+
+            // 如果没有选择适配器，自动使用最新的（第一个）
+            if (!adapterPath && adaptersList.length > 0) {
+                adapterPath = adaptersList[0].path;
+            }
+
             if (!adapterPath) {
-                alert('请先选择适配器');
+                alert('未找到适配器，请先训练适配器');
                 return;
             }
 
