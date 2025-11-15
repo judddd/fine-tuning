@@ -79,21 +79,42 @@ def load_adapter_config(adapter_path: Path) -> Optional[Dict[str, Any]]:
     加载适配器配置文件
     
     Args:
-        adapter_path: 适配器文件路径（adapters.npz）
+        adapter_path: 适配器文件路径（adapters.npz）或目录路径
         
     Returns:
         配置字典，如果文件不存在则返回 None
     """
-    # adapter_config.json 在 adapters.npz 的同一目录下
-    config_file = adapter_path.parent / "adapter_config.json"
+    # 如果 adapter_path 是文件（adapters.npz），则配置在同目录下
+    # 如果 adapter_path 是目录，则配置也在该目录下
+    if adapter_path.is_file():
+        config_file = adapter_path.parent / "adapter_config.json"
+    else:
+        config_file = adapter_path / "adapter_config.json"
+    
+    logger.info(f"查找适配器配置文件: {config_file}")
+    logger.info(f"配置文件是否存在: {config_file.exists()}")
+    
     if not config_file.exists():
+        logger.warning(f"适配器配置文件不存在: {config_file}")
+        # 尝试列出目录内容以便调试
+        if adapter_path.is_file():
+            parent_dir = adapter_path.parent
+        else:
+            parent_dir = adapter_path
+        if parent_dir.exists():
+            logger.info(f"目录内容: {list(parent_dir.iterdir())}")
         return None
     
     try:
+        logger.info(f"读取适配器配置文件: {config_file}")
         with open(config_file, 'r', encoding='utf-8') as f:
-            return json.load(f)
+            config = json.load(f)
+            logger.info(f"成功读取配置，包含键: {list(config.keys())}")
+            return config
     except Exception as e:
-        logger.warning(f"无法读取适配器配置 {config_file}: {e}")
+        logger.error(f"无法读取适配器配置 {config_file}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return None
 
 
@@ -438,10 +459,15 @@ class ModelManager:
         
         # 如果使用了适配器，尝试加载适配器配置信息
         if self.adapter_path and self.adapter_path.exists():
+            logger.info(f"尝试加载适配器配置，路径: {self.adapter_path}")
             config = load_adapter_config(self.adapter_path)
             if config:
+                logger.info(f"成功加载适配器配置: {config}")
                 adapter_info = extract_adapter_info(config)
                 info["adapter_config"] = adapter_info
+                logger.info(f"提取的适配器信息: {adapter_info}")
+            else:
+                logger.warning(f"无法加载适配器配置，路径: {self.adapter_path}")
         
         if self.is_loaded():
             info["device"] = "Apple Silicon (MLX)"

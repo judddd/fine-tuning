@@ -585,15 +585,21 @@
                     }
 
                     // 如果使用了适配器，显示适配器配置信息
-                    if (info.using_adapter && info.adapter_config) {
-                        const cfg = info.adapter_config;
-                        html += `<br><strong style="color: #667eea;">📊 LoRA 配置:</strong><br>`;
-                        html += `Rank: ${cfg.lora_rank} | Scale: ${cfg.lora_scale} | Dropout: ${cfg.lora_dropout}<br>`;
-                        html += `<strong style="color: #667eea;">⚙️ 训练参数:</strong><br>`;
-                        html += `学习率: ${cfg.learning_rate} | Batch: ${cfg.batch_size} | Iterations: ${cfg.iters}<br>`;
-                        html += `LoRA 层数: ${cfg.num_layers} | 最大长度: ${cfg.max_seq_length}<br>`;
-                        if (cfg.optimizer && cfg.optimizer !== 'N/A') {
-                            html += `优化器: ${cfg.optimizer}`;
+                    if (info.using_adapter) {
+                        if (info.adapter_config) {
+                            const cfg = info.adapter_config;
+                            html += `<br><strong style="color: #667eea;">📊 LoRA 配置:</strong><br>`;
+                            html += `Rank: ${cfg.lora_rank} | Scale: ${cfg.lora_scale} | Dropout: ${cfg.lora_dropout}<br>`;
+                            html += `<strong style="color: #667eea;">⚙️ 训练参数:</strong><br>`;
+                            html += `学习率: ${cfg.learning_rate} | Batch: ${cfg.batch_size} | Iterations: ${cfg.iters}<br>`;
+                            html += `LoRA 层数: ${cfg.num_layers} | 最大长度: ${cfg.max_seq_length}<br>`;
+                            if (cfg.optimizer && cfg.optimizer !== 'N/A') {
+                                html += `优化器: ${cfg.optimizer}`;
+                            }
+                        } else {
+                            // 使用了适配器但配置信息未加载
+                            html += `<br>使用适配器: ${info.adapter_path || '未知'}<br>`;
+                            html += `<small style="color: #6c757d;">（配置信息未找到）</small>`;
                         }
                     } else {
                         // 基础模型，显示简单信息
