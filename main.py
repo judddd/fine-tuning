@@ -13,7 +13,7 @@ import logging
 import asyncio
 from pathlib import Path
 
-from model_manager import ModelManager
+from model_manager import ModelManager, list_all_adapters
 
 # 日志配置
 logging.basicConfig(
@@ -169,6 +169,25 @@ async def get_all_status():
             "loaded": model_managers["model_b"] is not None and model_managers["model_b"].is_loaded(),
             "info": model_managers["model_b"].get_model_info() if model_managers["model_b"] else None
         }
+    }
+
+
+@app.get("/api/adapters")
+async def get_adapters(saves_dir: Optional[str] = None):
+    """
+    获取所有可用的适配器列表
+    
+    Args:
+        saves_dir: 适配器保存目录（可选，默认: mlx/saves/qwen-lora）
+    
+    Returns:
+        适配器列表，按时间排序（最新的在前）
+    """
+    saves_dir = saves_dir or "mlx/saves/qwen-lora"
+    adapters = list_all_adapters(saves_dir)
+    return {
+        "adapters": adapters,
+        "count": len(adapters)
     }
 
 

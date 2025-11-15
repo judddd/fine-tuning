@@ -13,15 +13,15 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def find_latest_adapter(saves_dir: str = "mlx/saves/qwen-lora") -> Optional[Path]:
+def resolve_saves_path(saves_dir: str = "mlx/saves/qwen-lora") -> Optional[Path]:
     """
-    自动查找最新的适配器
+    解析适配器保存目录路径
     
     Args:
         saves_dir: 保存目录路径（相对于项目根目录或绝对路径）
         
     Returns:
-        最新的适配器文件路径，如果不存在则返回 None
+        解析后的路径，如果不存在则返回 None
     """
     saves_path = Path(saves_dir)
     # 如果是相对路径，尝试从当前工作目录和脚本目录查找
@@ -40,6 +40,23 @@ def find_latest_adapter(saves_dir: str = "mlx/saves/qwen-lora") -> Optional[Path
         logger.warning(f"适配器保存目录不存在: {saves_path}")
         return None
     
+    return saves_path
+
+
+def find_latest_adapter(saves_dir: str = "mlx/saves/qwen-lora") -> Optional[Path]:
+    """
+    自动查找最新的适配器
+    
+    Args:
+        saves_dir: 保存目录路径（相对于项目根目录或绝对路径）
+        
+    Returns:
+        最新的适配器文件路径，如果不存在则返回 None
+    """
+    saves_path = resolve_saves_path(saves_dir)
+    if saves_path is None:
+        return None
+    
     # 查找所有 train_* 目录
     train_dirs = sorted(
         saves_path.glob("train_*"), 
@@ -55,6 +72,43 @@ def find_latest_adapter(saves_dir: str = "mlx/saves/qwen-lora") -> Optional[Path
     
     logger.warning("未找到任何适配器文件")
     return None
+
+
+def list_all_adapters(saves_dir: str = "mlx/saves/qwen-lora") -> list:
+    """
+    列出所有可用的适配器（按时间排序，最新的在前）
+    
+    Args:
+        saves_dir: 保存目录路径（相对于项目根目录或绝对路径）
+        
+    Returns:
+        适配器列表，每个元素包含：
+        - path: 适配器文件路径（字符串）
+        - name: 适配器名称（train_YYYY-MM-DD-HH-MM-SS）
+        - mtime: 修改时间戳
+    """
+    saves_path = resolve_saves_path(saves_dir)
+    if saves_path is None:
+        return []
+    
+    adapters = []
+    # 查找所有 train_* 目录
+    train_dirs = sorted(
+        saves_path.glob("train_*"), 
+        key=lambda p: p.stat().st_mtime, 
+        reverse=True  # 最新的在前
+    )
+    
+    for train_dir in train_dirs:
+        adapter_file = train_dir / "adapters.npz"
+        if adapter_file.exists():
+            adapters.append({
+                "path": str(adapter_file),
+                "name": train_dir.name,
+                "mtime": adapter_file.stat().st_mtime
+            })
+    
+    return adapters
 
 
 def detect_model_name_from_path(model_path: str) -> str:

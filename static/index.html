@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -87,8 +88,15 @@
         }
 
         @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
         }
 
         .form-group {
@@ -103,7 +111,8 @@
             font-size: 14px;
         }
 
-        .form-group input {
+        .form-group input,
+        .form-group select {
             width: 100%;
             padding: 12px;
             border: 2px solid #e9ecef;
@@ -112,7 +121,8 @@
             transition: border-color 0.3s;
         }
 
-        .form-group input:focus {
+        .form-group input:focus,
+        .form-group select:focus {
             outline: none;
             border-color: #667eea;
         }
@@ -345,6 +355,7 @@
         }
 
         @media (max-width: 1200px) {
+
             .models-grid,
             .comparison-grid {
                 grid-template-columns: 1fr;
@@ -362,10 +373,13 @@
         }
 
         @keyframes spin {
-            to { transform: rotate(360deg); }
+            to {
+                transform: rotate(360deg);
+            }
         }
     </style>
 </head>
+
 <body>
     <div class="container">
         <div class="header">
@@ -374,20 +388,31 @@
         </div>
 
         <div class="config-section">
+            <!-- 共享模型路径 -->
+            <div class="form-group"
+                style="margin-bottom: 30px; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);">
+                <label style="font-size: 16px; font-weight: 600; color: #667eea; margin-bottom: 10px;">📦
+                    模型路径（两个模型共用）</label>
+                <input type="text" id="shared-model-path"
+                    placeholder="/Users/newmind/.lmstudio/models/lmstudio-community/Qwen3-Coder-30B-A3B-Instruct-MLX-4bit"
+                    style="font-size: 15px;">
+                <small style="display: block; margin-top: 8px; color: #6c757d;">支持本地路径或 HuggingFace 模型 ID</small>
+            </div>
+
             <div class="models-grid">
-                <!-- Model A Configuration -->
+                <!-- Model A Configuration (带适配器) -->
                 <div class="model-config">
                     <h3>
                         <span class="status-indicator" id="status-a"></span>
-                        模型 A（原始模型）
+                        模型 A（带适配器）
                     </h3>
                     <div class="form-group">
-                        <label>模型名称（可选，留空自动检测）</label>
-                        <input type="text" id="name-a" placeholder="留空自动检测，如：Qwen/Qwen3-Next-80B-A3B-Instruct">
-                    </div>
-                    <div class="form-group">
-                        <label>模型路径</label>
-                        <input type="text" id="path-a" placeholder="/Users/newmind/.cache/modelscope/hub/models/Qwen/Qwen3-Next-80B-A3B-Instruct">
+                        <label>适配器选择</label>
+                        <select id="adapter-select">
+                            <option value="">加载中...</option>
+                        </select>
+                        <small
+                            style="display: block; margin-top: 5px; color: #6c757d;">选择要使用的适配器（按时间排序，最新的在前）。留空则自动使用最新的适配器</small>
                     </div>
                     <div class="btn-group">
                         <button class="btn btn-primary" onclick="loadModel('model_a')">
@@ -400,19 +425,18 @@
                     <div class="model-info" id="info-a"></div>
                 </div>
 
-                <!-- Model B Configuration -->
+                <!-- Model B Configuration (基础模型，不使用适配器) -->
                 <div class="model-config">
                     <h3>
                         <span class="status-indicator" id="status-b"></span>
-                        模型 B（微调模型）
+                        模型 B（基础模型）
                     </h3>
                     <div class="form-group">
-                        <label>模型名称（可选，留空自动检测）</label>
-                        <input type="text" id="name-b" placeholder="留空自动检测，如：Qwen/Qwen3-Next-80B-A3B-Finetuned">
-                    </div>
-                    <div class="form-group">
-                        <label>模型路径</label>
-                        <input type="text" id="path-b" placeholder="/path/to/finetuned/model">
+                        <label style="color: #6c757d; font-style: italic;">不使用适配器（基础模型）</label>
+                        <div
+                            style="padding: 12px; background: #f8f9fa; border-radius: 8px; color: #6c757d; font-size: 13px;">
+                            ✓ 将使用基础模型，不加载任何适配器
+                        </div>
                     </div>
                     <div class="btn-group">
                         <button class="btn btn-primary" onclick="loadModel('model_b')">
@@ -430,7 +454,7 @@
         <div class="prompt-section">
             <h3>💬 输入提示词</h3>
             <textarea class="prompt-input" id="prompt" placeholder="在此输入你的问题或提示词..."></textarea>
-            
+
             <div class="generate-section">
                 <div class="params">
                     <div class="param-group">
@@ -484,16 +508,53 @@
             model_a: false,
             model_b: false
         };
+        let adaptersList = [];
 
-        // 页面加载时检查模型状态
+        // 加载适配器列表
+        async function loadAdapters() {
+            try {
+                const response = await fetch('/api/adapters');
+                const data = await response.json();
+                adaptersList = data.adapters || [];
+
+                const select = document.getElementById('adapter-select');
+                select.innerHTML = '<option value="">-- 自动使用最新适配器 --</option>';
+
+                if (adaptersList.length === 0) {
+                    select.innerHTML += '<option value="" disabled>未找到适配器</option>';
+                } else {
+                    adaptersList.forEach(adapter => {
+                        const option = document.createElement('option');
+                        option.value = adapter.path;
+                        // 显示适配器名称和时间
+                        const date = new Date(adapter.mtime * 1000);
+                        const timeStr = date.toLocaleString('zh-CN', {
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                        });
+                        option.textContent = `${adapter.name} (${timeStr})`;
+                        select.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Failed to load adapters:', error);
+                const select = document.getElementById('adapter-select');
+                select.innerHTML = '<option value="">加载失败</option>';
+            }
+        }
+
+        // 页面加载时检查模型状态和加载适配器列表
         async function checkStatus() {
             try {
                 const response = await fetch('/api/status');
                 const data = await response.json();
-                
+
                 modelStatus.model_a = data.model_a.loaded;
                 modelStatus.model_b = data.model_b.loaded;
-                
+
                 updateStatusIndicator('model_a', data.model_a.loaded, data.model_a.info);
                 updateStatusIndicator('model_b', data.model_b.loaded, data.model_b.info);
             } catch (error) {
@@ -504,7 +565,7 @@
         function updateStatusIndicator(modelId, loaded, info) {
             const indicator = document.getElementById(`status-${modelId.split('_')[1]}`);
             const infoDiv = document.getElementById(`info-${modelId.split('_')[1]}`);
-            
+
             if (loaded) {
                 indicator.classList.add('loaded');
                 if (info) {
@@ -523,31 +584,48 @@
         }
 
         async function loadModel(modelId) {
-            const suffix = modelId.split('_')[1];
-            const name = document.getElementById(`name-${suffix}`).value.trim();
-            const path = document.getElementById(`path-${suffix}`).value.trim();
-            
-            if (!path) {
+            // 获取共享的模型路径
+            const sharedPath = document.getElementById('shared-model-path').value.trim();
+
+            if (!sharedPath) {
                 alert('请输入模型路径');
                 return;
             }
-            
+
             const btn = event.target;
             btn.disabled = true;
             btn.innerHTML = '<span class="spinner"></span> 加载中...';
-            
+
             try {
+                let requestBody = {
+                    model_path: sharedPath,
+                    model_name: null
+                };
+
+                if (modelId === 'model_a') {
+                    // Model A: 使用适配器
+                    const adapterPath = document.getElementById('adapter-select').value;
+                    if (adapterPath) {
+                        // 如果选择了适配器，使用指定的
+                        requestBody.adapter_path = adapterPath;
+                        requestBody.no_adapter = false;
+                    } else {
+                        // 如果没有选择，自动使用最新的（不设置 adapter_path，后端会自动查找）
+                        requestBody.no_adapter = false;
+                    }
+                } else if (modelId === 'model_b') {
+                    // Model B: 不使用适配器（基础模型）
+                    requestBody.no_adapter = true;
+                }
+
                 const response = await fetch(`/api/models/${modelId}/load`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        model_path: path,
-                        model_name: name || null
-                    })
+                    body: JSON.stringify(requestBody)
                 });
-                
+
                 const data = await response.json();
-                
+
                 if (data.success) {
                     alert(`✅ ${data.message}`);
                     await checkStatus();
@@ -567,9 +645,9 @@
                 const response = await fetch(`/api/models/${modelId}/unload`, {
                     method: 'POST'
                 });
-                
+
                 const data = await response.json();
-                
+
                 if (data.success) {
                     alert(`✅ ${data.message}`);
                     await checkStatus();
@@ -583,25 +661,25 @@
 
         async function generateComparison() {
             const prompt = document.getElementById('prompt').value.trim();
-            
+
             if (!prompt) {
                 alert('请输入提示词');
                 return;
             }
-            
+
             if (!modelStatus.model_a && !modelStatus.model_b) {
                 alert('请至少加载一个模型');
                 return;
             }
-            
+
             const maxTokens = parseInt(document.getElementById('max-tokens').value);
             const temperature = parseFloat(document.getElementById('temperature').value);
             const topP = parseFloat(document.getElementById('top-p').value);
-            
+
             const generateBtn = document.getElementById('generate-btn');
             generateBtn.disabled = true;
             generateBtn.innerHTML = '<span class="spinner"></span> 生成中...';
-            
+
             // Clear previous outputs
             if (modelStatus.model_a) {
                 document.getElementById('output-a').innerHTML = '<div class="loading">生成中...</div>';
@@ -611,18 +689,18 @@
                 document.getElementById('output-b').innerHTML = '<div class="loading">生成中...</div>';
                 document.getElementById('timer-b').textContent = '';
             }
-            
+
             // Generate from both models simultaneously
             const promises = [];
-            
+
             if (modelStatus.model_a) {
                 promises.push(streamGenerate('model_a', prompt, maxTokens, temperature, topP));
             }
-            
+
             if (modelStatus.model_b) {
                 promises.push(streamGenerate('model_b', prompt, maxTokens, temperature, topP));
             }
-            
+
             try {
                 await Promise.all(promises);
             } catch (error) {
@@ -637,15 +715,15 @@
             const suffix = modelId.split('_')[1];
             const outputDiv = document.getElementById(`output-${suffix}`);
             const timerSpan = document.getElementById(`timer-${suffix}`);
-            
+
             outputDiv.innerHTML = '';
-            
+
             const startTime = Date.now();
             let timerInterval = setInterval(() => {
                 const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
                 timerSpan.textContent = `${elapsed}s`;
             }, 100);
-            
+
             try {
                 const response = await fetch('/api/generate/stream', {
                     method: 'POST',
@@ -658,26 +736,26 @@
                         top_p: topP
                     })
                 });
-                
+
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}`);
                 }
-                
+
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
-                
+
                 while (true) {
                     const { done, value } = await reader.read();
-                    
+
                     if (done) break;
-                    
+
                     const chunk = decoder.decode(value);
                     const lines = chunk.split('\n');
-                    
+
                     for (const line of lines) {
                         if (line.startsWith('data: ')) {
                             const data = line.slice(6);
-                            
+
                             if (data === '[DONE]') {
                                 clearInterval(timerInterval);
                                 const finalTime = ((Date.now() - startTime) / 1000).toFixed(1);
@@ -701,11 +779,13 @@
         }
 
         // 初始化
+        loadAdapters();
         checkStatus();
-        
-        // 定期检查状态
+
+        // 定期检查状态和刷新适配器列表
         setInterval(checkStatus, 10000);
+        setInterval(loadAdapters, 30000); // 每30秒刷新一次适配器列表
     </script>
 </body>
-</html>
 
+</html>
