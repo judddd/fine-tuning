@@ -410,7 +410,7 @@ class ModelManager:
         Args:
             prompt: 输入提示词
             max_new_tokens: 最大生成token数（默认: 4096，最大支持 16384）
-            temperature: 温度参数（MLX 暂不支持，参数保留以兼容 API）
+            temperature: 温度参数（默认: 0.7，范围: 0.1-2.0，MLX 使用 temp 参数）
             top_p: nucleus sampling参数（MLX 暂不支持，参数保留以兼容 API）
             
         Yields:
@@ -421,8 +421,8 @@ class ModelManager:
             return
         
         try:
-            # MLX-LM 的 generate 函数支持 max_tokens 参数
-            # 使用 max_new_tokens 作为 max_tokens
+            # MLX-LM 的 generate 函数支持 max_tokens 和 temp 参数
+            # 注意：MLX-LM 使用 temp 而不是 temperature
             generate_kwargs = {
                 "prompt": prompt,
                 "verbose": False
@@ -436,6 +436,15 @@ class ModelManager:
             else:
                 # 如果没有指定，使用默认值 4096
                 generate_kwargs["max_tokens"] = 4096
+            
+            # 添加 temperature 参数（MLX-LM 使用 temp）
+            if temperature and temperature > 0:
+                # 限制 temperature 在合理范围内 (0.1 - 2.0)
+                temp_value = max(0.1, min(temperature, 2.0))
+                generate_kwargs["temp"] = temp_value
+            else:
+                # 默认 temperature 0.7
+                generate_kwargs["temp"] = 0.7
             
             response = self.generate_fn(
                 self.model,
