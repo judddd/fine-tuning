@@ -1,6 +1,6 @@
 """
-模型管理器 - 加载和管理本地LLM模型
-支持 Hugging Face 格式的本地模型
+模型管理器 - 加载和管理本地LLM模型（MLX 版本）
+支持 MLX-LM 格式的本地模型和 LoRA 适配器
 """
 
 import os
@@ -9,17 +9,52 @@ import logging
 from typing import Generator, Optional, Dict, Any
 from pathlib import Path
 
-import torch
-from transformers import (
-    AutoModelForCausalLM,
-    AutoTokenizer,
-    TextIteratorStreamer,
-    GenerationConfig
-)
-from threading import Thread
-
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def find_latest_adapter(saves_dir: str = "mlx/saves/qwen-lora") -> Optional[Path]:
+    """
+    自动查找最新的适配器
+    
+    Args:
+        saves_dir: 保存目录路径（相对于项目根目录或绝对路径）
+        
+    Returns:
+        最新的适配器文件路径，如果不存在则返回 None
+    """
+    saves_path = Path(saves_dir)
+    # 如果是相对路径，尝试从当前工作目录和脚本目录查找
+    if not saves_path.is_absolute():
+        # 先尝试当前工作目录
+        if not saves_path.exists():
+            # 尝试从脚本所在目录（fine-tune 目录）
+            script_dir = Path(__file__).parent
+            saves_path = script_dir / saves_dir
+            if not saves_path.exists():
+                # 尝试从项目根目录
+                project_root = script_dir.parent if script_dir.name == "fine-tune" else script_dir
+                saves_path = project_root / saves_dir
+    
+    if not saves_path.exists():
+        logger.warning(f"适配器保存目录不存在: {saves_path}")
+        return None
+    
+    # 查找所有 train_* 目录
+    train_dirs = sorted(
+        saves_path.glob("train_*"), 
+        key=lambda p: p.stat().st_mtime, 
+        reverse=True
+    )
+    
+    for train_dir in train_dirs:
+        adapter_file = train_dir / "adapters.npz"
+        if adapter_file.exists():
+            logger.info(f"找到适配器: {adapter_file}")
+            return adapter_file
+    
+    logger.warning("未找到任何适配器文件")
+    return None
 
 
 def detect_model_name_from_path(model_path: str) -> str:
@@ -32,12 +67,16 @@ def detect_model_name_from_path(model_path: str) -> str:
     3. 路径中的最后一级目录
     
     Args:
-        model_path: 模型本地路径
+        model_path: 模型本地路径或 HuggingFace 模型 ID
         
     Returns:
         检测到的模型名称
     """
     try:
+        # 如果是 HuggingFace 模型 ID（包含 /），直接返回
+        if "/" in model_path and not Path(model_path).exists():
+            return model_path
+        
         # 尝试从 config.json 读取
         config_path = Path(model_path) / "config.json"
         if config_path.exists():
@@ -76,20 +115,30 @@ def detect_model_name_from_path(model_path: str) -> str:
         
     except Exception as e:
         logger.warning(f"Failed to detect model name from config: {e}")
-        # 回退到路径最后一级
-        return Path(model_path).name
+        # 回退到路径最后一级或原路径
+        return Path(model_path).name if Path(model_path).exists() else model_path
 
 
 class ModelManager:
-    """本地模型管理器"""
+    """本地模型管理器（MLX 版本）"""
     
-    def __init__(self, model_path: str, model_name: Optional[str] = None):
+    def __init__(
+        self, 
+        model_path: str, 
+        model_name: Optional[str] = None,
+        adapter_path: Optional[str] = None,
+        no_adapter: bool = False,
+        saves_dir: str = "mlx/saves/qwen-lora"
+    ):
         """
         初始化模型管理器
         
         Args:
-            model_path: 模型本地路径
+            model_path: 模型路径或 HuggingFace 模型 ID
             model_name: 模型显示名称（可选，不提供则自动检测）
+            adapter_path: 适配器文件路径（可选，不提供则自动查找最新的）
+            no_adapter: 是否不使用适配器（使用基础模型）
+            saves_dir: 适配器保存目录（用于自动查找）
         """
         self.model_path = model_path
         # 如果未提供名称，自动检测
@@ -101,56 +150,77 @@ class ModelManager:
         
         self.model = None
         self.tokenizer = None
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        logger.info(f"Using device: {self.device}")
+        self.generate_fn = None
+        
+        # 适配器配置
+        self.no_adapter = no_adapter
+        self.saves_dir = saves_dir
+        
+        # 确定适配器路径
+        if no_adapter:
+            self.adapter_path = None
+            logger.info("配置为不使用适配器（基础模型）")
+        elif adapter_path:
+            self.adapter_path = Path(adapter_path)
+            logger.info(f"使用指定的适配器: {self.adapter_path}")
+        else:
+            # 自动查找最新的适配器
+            self.adapter_path = find_latest_adapter(saves_dir)
+            if self.adapter_path:
+                logger.info(f"自动找到适配器: {self.adapter_path}")
+            else:
+                logger.warning("未找到适配器，将使用基础模型")
+        
+        # 检查 MLX-LM 是否可用
+        try:
+            from mlx_lm import load, generate
+            self._mlx_available = True
+        except ImportError:
+            self._mlx_available = False
+            logger.error("MLX-LM 未安装，请运行: pip install mlx-lm")
     
     def load_model(self) -> bool:
         """
-        加载模型到内存
+        加载模型到内存（MLX 方式）
         
         Returns:
             是否加载成功
         """
+        if not self._mlx_available:
+            logger.error("MLX-LM 未安装，无法加载模型")
+            return False
+        
         try:
-            logger.info(f"Loading model from {self.model_path}...")
+            from mlx_lm import load, generate
             
-            # 检查路径是否存在
-            if not os.path.exists(self.model_path):
-                logger.error(f"Model path does not exist: {self.model_path}")
+            logger.info(f"🔄 加载模型: {self.model_path}")
+            
+            # 检查适配器路径（如果指定了）
+            if self.adapter_path and not self.adapter_path.exists():
+                logger.error(f"适配器文件不存在: {self.adapter_path}")
                 return False
             
-            # 加载 tokenizer
-            logger.info("Loading tokenizer...")
-            self.tokenizer = AutoTokenizer.from_pretrained(
-                self.model_path,
-                trust_remote_code=True,
-                local_files_only=True
-            )
+            # 加载模型和适配器
+            if self.adapter_path:
+                logger.info(f"   使用适配器: {self.adapter_path}")
+                self.model, self.tokenizer = load(
+                    self.model_path, 
+                    adapter_path=str(self.adapter_path)
+                )
+            else:
+                logger.info("   ⚠️  未使用适配器（基础模型）")
+                self.model, self.tokenizer = load(self.model_path)
             
-            # 设置 pad_token（如果没有）
-            if self.tokenizer.pad_token is None:
-                self.tokenizer.pad_token = self.tokenizer.eos_token
+            # 保存 generate 函数引用
+            self.generate_fn = generate
             
-            # 加载模型
-            logger.info("Loading model...")
-            self.model = AutoModelForCausalLM.from_pretrained(
-                self.model_path,
-                torch_dtype=torch.float16 if self.device == "cuda" else torch.float32,
-                device_map="auto" if self.device == "cuda" else None,
-                trust_remote_code=True,
-                local_files_only=True
-            )
-            
-            if self.device == "cpu":
-                self.model = self.model.to(self.device)
-            
-            self.model.eval()
-            
-            logger.info(f"✅ Model '{self.model_name}' loaded successfully!")
+            logger.info(f"✅ 模型 '{self.model_name}' 加载成功!")
             return True
             
         except Exception as e:
-            logger.error(f"❌ Failed to load model: {e}")
+            logger.error(f"❌ 加载模型失败: {e}")
+            import traceback
+            traceback.print_exc()
             return False
     
     def unload_model(self):
@@ -161,11 +231,10 @@ class ModelManager:
         if self.tokenizer:
             del self.tokenizer
             self.tokenizer = None
+        if self.generate_fn:
+            self.generate_fn = None
         
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-        
-        logger.info(f"Model '{self.model_name}' unloaded")
+        logger.info(f"模型 '{self.model_name}' 已卸载")
     
     def is_loaded(self) -> bool:
         """检查模型是否已加载"""
@@ -180,88 +249,75 @@ class ModelManager:
         **kwargs
     ) -> Generator[str, None, None]:
         """
-        流式生成文本
+        流式生成文本（MLX 方式）
         
         Args:
             prompt: 输入提示词
-            max_new_tokens: 最大生成token数
-            temperature: 温度参数
-            top_p: nucleus sampling参数
+            max_new_tokens: 最大生成token数（MLX 使用 max_tokens）
+            temperature: 温度参数（MLX 使用 temp）
+            top_p: nucleus sampling参数（MLX 使用 top_p）
             
         Yields:
             生成的文本片段
         """
         if not self.is_loaded():
-            yield "[ERROR] Model not loaded. Please load the model first."
+            yield "[ERROR] 模型未加载，请先加载模型"
             return
         
         try:
-            # 编码输入
-            inputs = self.tokenizer(
-                prompt,
-                return_tensors="pt",
-                padding=True,
-                truncation=True,
-                max_length=2048
-            ).to(self.device)
+            # MLX-LM 的 generate 函数是同步的，需要手动实现流式输出
+            # 这里使用一个简单的实现：分块生成
+            # 注意：MLX-LM 的 generate 函数本身不支持流式输出
+            # 我们可以通过多次调用或使用回调来实现类似效果
             
-            # 创建流式输出器
-            streamer = TextIteratorStreamer(
+            # 使用 MLX-LM 的 generate 函数
+            # 注意：MLX-LM 的参数名是 max_tokens 和 temp，不是 max_new_tokens 和 temperature
+            response = self.generate_fn(
+                self.model,
                 self.tokenizer,
-                skip_prompt=True,
-                skip_special_tokens=True
-            )
-            
-            # 生成配置
-            generation_config = GenerationConfig(
-                max_new_tokens=max_new_tokens,
-                temperature=temperature,
+                prompt=prompt,
+                max_tokens=max_new_tokens,
+                temp=temperature,
                 top_p=top_p,
-                do_sample=True,
-                pad_token_id=self.tokenizer.pad_token_id,
-                eos_token_id=self.tokenizer.eos_token_id,
+                verbose=False,
                 **kwargs
             )
             
-            # 在后台线程中生成
-            generation_kwargs = dict(
-                **inputs,
-                generation_config=generation_config,
-                streamer=streamer,
-            )
-            
-            thread = Thread(target=self.model.generate, kwargs=generation_kwargs)
-            thread.start()
-            
-            # 流式输出
-            for text in streamer:
-                yield text
-            
-            thread.join()
+            # 将完整响应分块返回（模拟流式输出）
+            # 可以按字符或按词分块
+            chunk_size = 5  # 每次返回 5 个字符
+            for i in range(0, len(response), chunk_size):
+                chunk = response[i:i + chunk_size]
+                yield chunk
             
         except Exception as e:
-            logger.error(f"Generation error: {e}")
+            logger.error(f"生成错误: {e}")
+            import traceback
+            traceback.print_exc()
             yield f"\n\n[ERROR] {str(e)}"
     
     def get_model_info(self) -> Dict[str, Any]:
         """获取模型信息"""
-        if not self.is_loaded():
-            return {
-                "name": self.model_name,
-                "path": self.model_path,
-                "loaded": False,
-                "device": self.device
-            }
-        
-        # 计算参数量
-        num_parameters = sum(p.numel() for p in self.model.parameters())
-        
-        return {
+        info = {
             "name": self.model_name,
             "path": self.model_path,
-            "loaded": True,
-            "device": str(self.model.device) if hasattr(self.model, 'device') else self.device,
-            "num_parameters": f"{num_parameters:,}",
-            "dtype": str(self.model.dtype) if hasattr(self.model, 'dtype') else "unknown"
+            "loaded": self.is_loaded(),
+            "adapter_path": str(self.adapter_path) if self.adapter_path else None,
+            "using_adapter": self.adapter_path is not None and not self.no_adapter,
+            "framework": "MLX"
         }
+        
+        if self.is_loaded():
+            # MLX 模型信息
+            try:
+                # 尝试获取模型参数数量
+                if hasattr(self.model, 'parameters'):
+                    num_parameters = sum(p.size for p in self.model.parameters() if hasattr(p, 'size'))
+                    info["num_parameters"] = f"{num_parameters:,}" if num_parameters > 0 else "unknown"
+            except:
+                pass
+            
+            info["device"] = "Apple Silicon (MLX)"
+        
+        return info
 

@@ -50,6 +50,9 @@ model_managers: Dict[str, ModelManager] = {
 class ModelConfig(BaseModel):
     model_path: str
     model_name: Optional[str] = None
+    adapter_path: Optional[str] = None  # 适配器文件路径
+    no_adapter: bool = False  # 是否不使用适配器（使用基础模型）
+    saves_dir: Optional[str] = None  # 适配器保存目录（用于自动查找，默认: mlx/saves/qwen-lora）
 
 
 class GenerateRequest(BaseModel):
@@ -87,9 +90,13 @@ async def load_model(model_id: str, config: ModelConfig):
     
     # 创建新模型管理器
     model_name = config.model_name or f"Model {model_id.upper()}"
+    saves_dir = config.saves_dir or "mlx/saves/qwen-lora"
     manager = ModelManager(
         model_path=config.model_path,
-        model_name=model_name
+        model_name=model_name,
+        adapter_path=config.adapter_path,
+        no_adapter=config.no_adapter,
+        saves_dir=saves_dir
     )
     
     # 异步加载模型（在后台线程执行以避免阻塞）

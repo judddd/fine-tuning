@@ -53,10 +53,10 @@ config = {
     "data": "../dataset",
     
     # LoRA 参数
-    "num_layers": 16,  # 改名：lora_layers -> num_layers
+    "num_layers": 35,  # 改名：lora_layers -> num_layers
     "lora_rank": 8,
-    "lora_alpha": 16,
-    "lora_dropout": 0.0,
+    "lora_alpha": 16, # scale=1防止过拟合
+    "lora_dropout": 0.0, # 0.0死记硬背
     
     # 训练参数
     "batch_size": 16,
