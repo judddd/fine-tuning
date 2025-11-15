@@ -55,8 +55,8 @@ config = {
     # LoRA 参数
     "num_layers": 35,  # 改名：lora_layers -> num_layers
     "lora_rank": 8,
-    "lora_alpha": 16, # scale=1防止过拟合
-    "lora_dropout": 0.0, # 0.0死记硬背
+    "lora_alpha": 16, # 小模型设置scale=1防止过拟合
+    "lora_dropout": 0.0, # 设置0.0容易死记硬背
     
     # 训练参数
     "batch_size": 16,

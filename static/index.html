@@ -722,11 +722,15 @@
                                 minute: '2-digit'
                             });
 
-                            // 如果有配置信息，显示 LoRA 参数
+                            // 如果有配置信息，显示 LoRA 参数和模型路径
                             let displayText = `${adapter.name} (${timeStr})`;
                             if (adapter.config) {
                                 const cfg = adapter.config;
                                 displayText += ` - LoRA: R${cfg.lora_rank}/S${cfg.lora_scale} | LR: ${cfg.learning_rate} | Iter: ${cfg.iters}`;
+                                // 如果有模型路径，添加到 tooltip
+                                if (cfg.model && cfg.model !== 'N/A') {
+                                    option.title = `训练时使用的模型: ${cfg.model}\n${displayText}`;
+                                }
                             }
 
                             option.textContent = displayText;
@@ -777,6 +781,33 @@
                     if (info.using_adapter) {
                         if (info.adapter_config) {
                             const cfg = info.adapter_config;
+
+                            // 检查模型路径是否匹配
+                            const sharedModelPath = document.getElementById('shared-model-path').value.trim();
+                            const adapterModelPath = cfg.model;
+                            let modelMatchWarning = '';
+
+                            if (adapterModelPath && adapterModelPath !== 'N/A' && sharedModelPath) {
+                                // 简单路径比较（去除尾部斜杠和空格）
+                                const normalizedAdapter = adapterModelPath.replace(/\/+$/, '').trim();
+                                const normalizedInput = sharedModelPath.replace(/\/+$/, '').trim();
+
+                                if (normalizedAdapter !== normalizedInput) {
+                                    modelMatchWarning = `<div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 8px; margin: 8px 0; border-radius: 4px;">
+                                        <strong style="color: #856404;">⚠️ 模型路径不匹配</strong><br>
+                                        <small style="color: #856404;">训练时使用的模型:</small><br>
+                                        <code style="background: #f8f9fa; padding: 2px 6px; border-radius: 3px; color: #d63384; font-size: 11px; word-break: break-all;">${adapterModelPath}</code>
+                                    </div>`;
+                                } else {
+                                    modelMatchWarning = `<div style="background: #d1e7dd; border-left: 4px solid #28a745; padding: 8px; margin: 8px 0; border-radius: 4px;">
+                                        <strong style="color: #155724;">✓ 模型路径匹配</strong><br>
+                                        <small style="color: #155724;">训练时使用的模型:</small><br>
+                                        <code style="background: #f8f9fa; padding: 2px 6px; border-radius: 3px; color: #0d6efd; font-size: 11px; word-break: break-all;">${adapterModelPath}</code>
+                                    </div>`;
+                                }
+                            }
+
+                            html += modelMatchWarning;
                             html += `<br><strong style="color: #667eea;">📊 LoRA 配置:</strong><br>`;
                             html += `Rank: ${cfg.lora_rank} | Scale: ${cfg.lora_scale} | Dropout: ${cfg.lora_dropout}<br>`;
                             html += `<strong style="color: #667eea;">⚙️ 训练参数:</strong><br>`;

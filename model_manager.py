@@ -156,6 +156,9 @@ def extract_adapter_info(config: Dict[str, Any]) -> Dict[str, Any]:
     """
     info = {}
     
+    # 模型路径（重要：用于匹配检查）
+    info["model"] = config.get("model", "N/A")
+    
     # LoRA 参数
     if "lora_parameters" in config:
         lora = config["lora_parameters"]
@@ -401,6 +404,31 @@ class ModelManager:
             if self.adapter_path and not self.adapter_path.exists():
                 logger.error(f"适配器文件不存在: {self.adapter_path}")
                 return False
+            
+            # 如果使用适配器，检查模型路径是否匹配
+            if self.adapter_path:
+                config = load_adapter_config(self.adapter_path)
+                if config:
+                    adapter_model_path = config.get("model", "")
+                    if adapter_model_path and adapter_model_path != "N/A":
+                        # 标准化路径进行比较（去除尾部斜杠等）
+                        try:
+                            normalized_adapter_model = str(Path(adapter_model_path).resolve())
+                            normalized_input_model = str(Path(self.model_path).resolve())
+                            
+                            if normalized_adapter_model != normalized_input_model:
+                                logger.warning("=" * 60)
+                                logger.warning("⚠️  模型路径不匹配警告！")
+                                logger.warning(f"输入的模型路径: {self.model_path}")
+                                logger.warning(f"适配器配置中的模型路径: {adapter_model_path}")
+                                logger.warning("=" * 60)
+                                logger.warning("建议：使用适配器训练时使用的原始模型路径，否则可能影响效果")
+                                # 不阻止加载，只记录警告
+                        except Exception as e:
+                            # 如果路径解析失败，使用简单字符串比较
+                            logger.debug(f"路径标准化失败，使用简单比较: {e}")
+                            if adapter_model_path.rstrip('/') != self.model_path.rstrip('/'):
+                                logger.warning(f"⚠️  模型路径可能不匹配: {self.model_path} vs {adapter_model_path}")
             
             # 加载模型和适配器
             if self.adapter_path:
