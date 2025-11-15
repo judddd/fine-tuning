@@ -678,6 +678,8 @@
         // 历史记录
         let modelPathHistory = [];
         let promptHistory = [];
+        // 当前选中的适配器路径（用于恢复选中状态）
+        let currentSelectedAdapter = '';
 
         // 加载适配器列表
         async function loadAdapters() {
@@ -686,23 +688,57 @@
                 const data = await response.json();
                 adaptersByType = data.adapters_by_type || {};
 
+                // 获取当前输入的模型路径
+                const sharedModelPath = document.getElementById('shared-model-path').value.trim();
+
                 // 扁平化适配器列表（按时间排序，最新的在前）
                 adaptersList = [];
                 Object.keys(adaptersByType).forEach(modelType => {
                     adaptersList.push(...adaptersByType[modelType]);
                 });
+
+                // 如果有输入的模型路径，过滤匹配的适配器
+                let filteredAdapters = adaptersList;
+                if (sharedModelPath) {
+                    filteredAdapters = adaptersList.filter(adapter => {
+                        if (!adapter.config || !adapter.config.model || adapter.config.model === 'N/A') {
+                            // 如果没有配置信息，保留（可能匹配）
+                            return true;
+                        }
+                        // 简单路径比较（去除尾部斜杠和空格）
+                        const normalizedAdapter = adapter.config.model.replace(/\/+$/, '').trim();
+                        const normalizedInput = sharedModelPath.replace(/\/+$/, '').trim();
+                        return normalizedAdapter === normalizedInput;
+                    });
+                }
+
                 // 按时间排序，最新的在前
-                adaptersList.sort((a, b) => b.mtime - a.mtime);
+                filteredAdapters.sort((a, b) => b.mtime - a.mtime);
 
                 const select = document.getElementById('adapter-select');
+                // 保存当前选中的值
+                const currentValue = select.value;
                 select.innerHTML = '<option value="">-- 自动使用最新适配器 --</option>';
 
-                if (adaptersList.length === 0) {
-                    select.innerHTML += '<option value="" disabled>未找到适配器</option>';
+                if (filteredAdapters.length === 0) {
+                    if (sharedModelPath) {
+                        select.innerHTML += '<option value="" disabled>未找到匹配的适配器（请检查模型路径）</option>';
+                    } else {
+                        select.innerHTML += '<option value="" disabled>未找到适配器</option>';
+                    }
                 } else {
-                    // 按模型类型分组显示
-                    Object.keys(adaptersByType).sort().forEach(modelType => {
-                        const adapters = adaptersByType[modelType];
+                    // 按模型类型分组显示（只显示过滤后的适配器）
+                    const filteredByType = {};
+                    filteredAdapters.forEach(adapter => {
+                        const modelType = adapter.model_type || 'unknown';
+                        if (!filteredByType[modelType]) {
+                            filteredByType[modelType] = [];
+                        }
+                        filteredByType[modelType].push(adapter);
+                    });
+
+                    Object.keys(filteredByType).sort().forEach(modelType => {
+                        const adapters = filteredByType[modelType];
 
                         // 添加模型类型分组标题（optgroup）
                         const optgroup = document.createElement('optgroup');
@@ -739,6 +775,14 @@
 
                         select.appendChild(optgroup);
                     });
+
+                    // 恢复之前选中的值（如果还存在）
+                    if (currentValue && Array.from(select.options).some(opt => opt.value === currentValue)) {
+                        select.value = currentValue;
+                    } else if (currentSelectedAdapter && Array.from(select.options).some(opt => opt.value === currentSelectedAdapter)) {
+                        // 如果之前保存的适配器路径存在，恢复它
+                        select.value = currentSelectedAdapter;
+                    }
                 }
             } catch (error) {
                 console.error('Failed to load adapters:', error);
@@ -755,6 +799,19 @@
 
                 modelStatus.model_a = data.model_a.loaded;
                 modelStatus.model_b = data.model_b.loaded;
+
+                // 如果 Model A 已加载且使用了适配器，更新选中的适配器
+                if (data.model_a.loaded && data.model_a.info && data.model_a.info.using_adapter) {
+                    const adapterPath = data.model_a.info.adapter_path;
+                    if (adapterPath) {
+                        currentSelectedAdapter = adapterPath;
+                        // 更新下拉框选中状态
+                        const select = document.getElementById('adapter-select');
+                        if (select && Array.from(select.options).some(opt => opt.value === adapterPath)) {
+                            select.value = adapterPath;
+                        }
+                    }
+                }
 
                 updateStatusIndicator('model_a', data.model_a.loaded, data.model_a.info);
                 updateStatusIndicator('model_b', data.model_b.loaded, data.model_b.info);
@@ -779,6 +836,23 @@
 
                     // 如果使用了适配器，显示适配器配置信息
                     if (info.using_adapter) {
+                        // 显示当前使用的适配器路径
+                        const adapterPath = info.adapter_path || '未知';
+                        // 从适配器路径中提取适配器名称
+                        let adapterName = adapterPath;
+                        if (adapterPath.includes('/')) {
+                            const parts = adapterPath.split('/');
+                            // 查找 train_ 开头的目录名
+                            for (let i = parts.length - 1; i >= 0; i--) {
+                                if (parts[i].startsWith('train_')) {
+                                    adapterName = parts[i];
+                                    break;
+                                }
+                            }
+                        }
+                        html += `<br><strong style="color: #667eea;">📦 当前适配器:</strong><br>`;
+                        html += `<code style="background: #f8f9fa; padding: 2px 6px; border-radius: 3px; color: #0d6efd; font-size: 11px; word-break: break-all;">${adapterName}</code><br>`;
+
                         if (info.adapter_config) {
                             const cfg = info.adapter_config;
 
@@ -818,7 +892,6 @@
                             }
                         } else {
                             // 使用了适配器但配置信息未加载
-                            html += `<br>使用适配器: ${info.adapter_path || '未知'}<br>`;
                             html += `<small style="color: #6c757d;">（配置信息未找到）</small>`;
                         }
                     } else {
@@ -861,9 +934,12 @@
                         // 如果选择了适配器，使用指定的
                         requestBody.adapter_path = adapterPath;
                         requestBody.no_adapter = false;
+                        // 保存选中的适配器路径
+                        currentSelectedAdapter = adapterPath;
                     } else {
                         // 如果没有选择，自动使用最新的（不设置 adapter_path，后端会自动查找）
                         requestBody.no_adapter = false;
+                        currentSelectedAdapter = ''; // 清除选中状态
                     }
                 } else if (modelId === 'model_b') {
                     // Model B: 不使用适配器（基础模型）
@@ -881,6 +957,8 @@
                 if (data.success) {
                     // 加载成功，不弹出对话框，只更新状态
                     await checkStatus();
+                    // 刷新适配器列表以恢复选中状态
+                    await loadAdapters();
                 } else {
                     alert(`❌ ${data.message}\n${data.error || ''}`);
                 }
@@ -1362,6 +1440,14 @@
             const modelPathInput = document.getElementById('shared-model-path');
             if (modelPathInput) {
                 modelPathInput.addEventListener('blur', saveModelPathHistory);
+                // 当模型路径变化时，自动刷新适配器列表（过滤匹配的）
+                let debounceTimer;
+                modelPathInput.addEventListener('input', function () {
+                    clearTimeout(debounceTimer);
+                    debounceTimer = setTimeout(() => {
+                        loadAdapters();
+                    }, 500); // 延迟500ms，避免频繁刷新
+                });
             }
 
             const promptInput = document.getElementById('prompt');
