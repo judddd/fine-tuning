@@ -407,11 +407,14 @@ class ModelManager:
         """
         流式生成文本（MLX 方式）
         
+        注意：MLX-LM 的 generate 函数不支持 max_tokens、temperature、top_p 等参数
+        这些参数会被忽略，使用模型的默认设置
+        
         Args:
             prompt: 输入提示词
-            max_new_tokens: 最大生成token数（默认: 2048，如果未指定则使用较大值）
-            temperature: 温度参数（MLX 暂不支持，参数保留以兼容 API）
-            top_p: nucleus sampling参数（MLX 暂不支持，参数保留以兼容 API）
+            max_new_tokens: 最大生成token数（MLX 不支持，参数保留以兼容 API）
+            temperature: 温度参数（MLX 不支持，参数保留以兼容 API）
+            top_p: nucleus sampling参数（MLX 不支持，参数保留以兼容 API）
             
         Yields:
             生成的文本片段
@@ -421,24 +424,13 @@ class ModelManager:
             return
         
         try:
-            # MLX-LM 的 generate 函数支持 max_tokens 参数
-            # 使用 max_new_tokens 作为 max_tokens（如果提供了的话）
-            generate_kwargs = {
-                "prompt": prompt,
-                "verbose": False
-            }
-            
-            # 如果提供了 max_new_tokens，使用它（默认值较大以确保完整输出）
-            if max_new_tokens and max_new_tokens > 0:
-                generate_kwargs["max_tokens"] = max_new_tokens
-            else:
-                # 如果没有指定，使用较大的默认值（2048 tokens）
-                generate_kwargs["max_tokens"] = 2048
-            
+            # MLX-LM 的 generate 函数只支持 prompt 和 verbose 参数
+            # 参考 use_model.py 的实现，不传递 max_tokens、temperature 等参数
             response = self.generate_fn(
                 self.model,
                 self.tokenizer,
-                **generate_kwargs
+                prompt=prompt,
+                verbose=False
             )
             
             # 将完整响应分块返回（模拟流式输出）
