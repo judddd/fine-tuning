@@ -58,7 +58,7 @@ class ModelConfig(BaseModel):
 class GenerateRequest(BaseModel):
     prompt: str
     model_id: str  # "model_a" or "model_b"
-    max_new_tokens: int = 512
+    max_new_tokens: int = 4096
     temperature: float = 0.7
     top_p: float = 0.9
 

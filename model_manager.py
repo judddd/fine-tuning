@@ -399,7 +399,7 @@ class ModelManager:
     def generate_stream(
         self,
         prompt: str,
-        max_new_tokens: int = 512,
+        max_new_tokens: int = 4096,
         temperature: float = 0.7,
         top_p: float = 0.9,
         **kwargs
@@ -407,14 +407,11 @@ class ModelManager:
         """
         流式生成文本（MLX 方式）
         
-        注意：MLX-LM 的 generate 函数不支持 max_tokens、temperature、top_p 等参数
-        这些参数会被忽略，使用模型的默认设置
-        
         Args:
             prompt: 输入提示词
-            max_new_tokens: 最大生成token数（MLX 不支持，参数保留以兼容 API）
-            temperature: 温度参数（MLX 不支持，参数保留以兼容 API）
-            top_p: nucleus sampling参数（MLX 不支持，参数保留以兼容 API）
+            max_new_tokens: 最大生成token数（默认: 4096，最大支持 16384）
+            temperature: 温度参数（MLX 暂不支持，参数保留以兼容 API）
+            top_p: nucleus sampling参数（MLX 暂不支持，参数保留以兼容 API）
             
         Yields:
             生成的文本片段
@@ -424,13 +421,26 @@ class ModelManager:
             return
         
         try:
-            # MLX-LM 的 generate 函数只支持 prompt 和 verbose 参数
-            # 参考 use_model.py 的实现，不传递 max_tokens、temperature 等参数
+            # MLX-LM 的 generate 函数支持 max_tokens 参数
+            # 使用 max_new_tokens 作为 max_tokens
+            generate_kwargs = {
+                "prompt": prompt,
+                "verbose": False
+            }
+            
+            # 如果提供了 max_new_tokens，使用它（限制在合理范围内）
+            if max_new_tokens and max_new_tokens > 0:
+                # 限制最大值为 16384 tokens
+                max_tokens = min(max_new_tokens, 16384)
+                generate_kwargs["max_tokens"] = max_tokens
+            else:
+                # 如果没有指定，使用默认值 4096
+                generate_kwargs["max_tokens"] = 4096
+            
             response = self.generate_fn(
                 self.model,
                 self.tokenizer,
-                prompt=prompt,
-                verbose=False
+                **generate_kwargs
             )
             
             # 将完整响应分块返回（模拟流式输出）
