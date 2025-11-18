@@ -52,7 +52,7 @@ config = {
     # 数据目录
     "data": "../dataset",
     
-    # LoRA 参数 20,16,32,0.1,6,200 大概400g
+    # LoRA 参数 20,16,32,0.1,6,200,1024 大概400g
     "num_layers": 20,  # 改名：lora_layers -> num_layers
     "lora_rank": 16,
     "lora_alpha": 32, # 小模型设置scale=1防止过拟合
@@ -62,7 +62,7 @@ config = {
     "batch_size": 6,
     "iters": 200, # （iters*batch/训练数据量=想要训练轮数） 总训练样本数 = 18750 × 16 = 300,000 个样本，如果你的数据只有 1000 条，每条会被训练 300 次
     "learning_rate": 5e-5,
-    "max_seq_length": 2048,
+    "max_seq_length": 1024,
     
     # 日志和保存
     "steps_per_report": 5,
